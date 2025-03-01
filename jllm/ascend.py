@@ -301,7 +301,8 @@ def mcore_tensor_parallel_adaptation_l0(aspm):
 def mcore_tensor_parallel_adaptation_l1(aspm):
     from mindspeed.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy_forward
     # use logical negation followed by multiplication to achieve the same effect as setting selected elements to zero
-    aspm.register_patch('megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.forward',
+    import jllm
+    aspm.register_patch('jllm.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.forward',
                         vocab_parallel_cross_entropy_forward)
 
 
@@ -311,9 +312,10 @@ def mcore_tensor_parallel_adaptation(aspm):
     from mindspeed.core.tensor_parallel.layers import vocab_parallel_embedding_forward
     from mindspeed.core.tensor_parallel.layers import row_parallel_nocomm_optimizer_wrapper
     from mindspeed.core.tensor_parallel.layers import parallel_linear_init_wrapper
-    aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
-                        checkpoint_function_backward)
     import jllm 
+    aspm.register_patch('jllm.core.tensor_parallel.random.CheckpointFunction.backward',
+                        checkpoint_function_backward)
+    
     aspm.register_patch('jllm.core.tensor_parallel.layers.VocabParallelEmbedding.forward',
                         vocab_parallel_embedding_forward)
     aspm.register_patch('jllm.core.tensor_parallel.layers.RowParallelLinear.forward',
@@ -322,7 +324,7 @@ def mcore_tensor_parallel_adaptation(aspm):
                         parallel_linear_init_wrapper)
     aspm.register_patch('jllm.core.tensor_parallel.layers.ColumnParallelLinear.__init__',
                         parallel_linear_init_wrapper)
-    aspm.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
+    aspm.register_patch('jllm.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
 
 
 def megatron_core_adaptation(aspm):
@@ -776,9 +778,21 @@ def exe_adaptation():
         linear_with_grad_accumulation_and_async_allreduce,
         linear_with_frozen_weight,
     )
+    from jllm.core.tensor_parallel.utils import gather_split_1d_tensor
+    from jllm.core.tensor_parallel.random import (
+        get_cuda_rng_tracker,
+        safely_set_viewless_tensor_data
+    )
+    from jllm.core.parallel_state import (
+        get_tensor_model_parallel_group,
+        get_tensor_model_parallel_world_size,
+        get_tensor_model_parallel_rank,
+    )
     from jllm.train_pipe import get_args
     from jllm.core import parallel_state
     from mindspeed.core.tensor_parallel import layers
+    from mindspeed.core.tensor_parallel import random
+    from mindspeed.core.tensor_parallel import cross_entropy
     layers.copy_to_tensor_model_parallel_region = copy_to_tensor_model_parallel_region
     layers.gather_from_tensor_model_parallel_region =gather_from_tensor_model_parallel_region
     layers.reduce_from_tensor_model_parallel_region =reduce_from_tensor_model_parallel_region
@@ -791,10 +805,22 @@ def exe_adaptation():
     layers.get_args =get_args
     layers.parallel_state =parallel_state
     layers.mpu =parallel_state
+    random.get_args = get_args
+    random.gather_split_1d_tensor = gather_split_1d_tensor
+    random.get_cuda_rng_tracker=get_cuda_rng_tracker
+    random.safely_set_viewless_tensor_data=safely_set_viewless_tensor_data
+    random.get_tensor_model_parallel_group=get_tensor_model_parallel_group
+    random.get_tensor_model_parallel_world_size=get_tensor_model_parallel_world_size
+    cross_entropy.get_tensor_model_parallel_group=get_tensor_model_parallel_group
+    cross_entropy.get_tensor_model_parallel_rank=get_tensor_model_parallel_rank
+    cross_entropy.get_tensor_model_parallel_world_size=get_tensor_model_parallel_world_size
+    
     args=get_args()
-    args.optimize_recomp_communication_status = 0
-    args.optimize_recomp_communication_level = 0
+    args.optimize_recomp_communication_status = 1
+    args.optimize_recomp_communication_level = 1
     args.recompute_num_layers = 0
     args.swap_attention = False
-
+    args.sequence_parallel = False
+    args.use_ascend_mc2 = False
+    
 exe_adaptation()

@@ -12,6 +12,7 @@ from transformers import (
     get_scheduler,)
 from .utils import (
     set_random_seed,
+    get_param_groups,
     get_optimizer_grouped_parameters)
 from .model import (
     autopartition_transformer,
@@ -115,9 +116,6 @@ parser.add_argument('--attention_alpha',
                     type=float,
                     default=3,
                     help='coefficient to estimate attention\'s computation.')
-parser.add_argument('--offload',
-                    action='store_true',
-                    help='Enable ZeRO Offload techniques.') 
 parser.add_argument("--partition_method",
                     type=str,
                     default= "fast",
@@ -315,9 +313,7 @@ def main(args):
     else:
         args.global_batch_size = args.per_device_train_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
 
-    ds_config = get_train_ds_config(
-        offload=args.offload,
-        stage=args.zero_stage,)
+    ds_config = get_train_ds_config(offload=False,stage=args.zero_stage,)
     ds_config[
         'train_micro_batch_size_per_gpu'] = args.per_device_train_batch_size
     ds_config[
@@ -428,7 +424,7 @@ def main(args):
     topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.model_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
-    if args.model_parallel_size >1:
+    if args.model_parallel_size >=1:
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
@@ -493,11 +489,9 @@ def main(args):
                 model = make_model_gradient_checkpointing_compatible(model)
                 
     if "optimizer" not in ds_config:
-        optimizer_grouped_parameters = get_optimizer_grouped_parameters(
-            model, args.weight_decay)
-        AdamOptimizer = DeepSpeedCPUAdam if args.offload else FusedAdam
-        optimizer = AdamOptimizer(optimizer_grouped_parameters,
-                                  lr=args.learning_rate,
+        optimizer_grouped_parameters = get_param_groups(model)
+        optimizer = FusedAdam(optimizer_grouped_parameters,
+                                  lr=args.learning_rate, weight_decay=args.weight_decay,
                                   betas=(0.9, 0.95))
                               
     '''

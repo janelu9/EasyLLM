@@ -91,6 +91,54 @@ def get_all_reduce_mean(tensor):
     tensor = tensor / torch.distributed.get_world_size()
     return tensor
 
+def get_param_groups(module,
+                     no_weight_decay_cond=None,
+                     scale_lr_cond=None,
+                     lr_mult=1.0):
+    """creates param groups based on weight decay condition (regularized vs non regularized)
+       and learning rate scale condition (args.lr vs lr_mult * args.lr)
+       scale_lr_cond is used during finetuning where head of the network requires a scaled
+       version of the base learning rate. 
+    """
+    wd_no_scale_lr = []
+    wd_scale_lr = []
+    no_wd_no_scale_lr = []
+    no_wd_scale_lr = []
+    for name, param in module.named_parameters():
+        if not param.requires_grad:
+            continue
+
+        if no_weight_decay_cond is not None:
+            no_wd = no_weight_decay_cond(name, param)
+        else:
+            # do not regularize biases nor Norm parameters
+            no_wd = name.endswith(".bias") or len(param.shape) == 1
+
+        if scale_lr_cond is not None:
+            scale_lr = scale_lr_cond(name, param)
+        else:
+            scale_lr = False
+
+        if not no_wd and not scale_lr:
+            wd_no_scale_lr.append(param)
+        elif not no_wd and scale_lr:
+            wd_scale_lr.append(param)
+        elif no_wd and not scale_lr:
+            no_wd_no_scale_lr.append(param)
+        else:
+            no_wd_scale_lr.append(param)
+
+    param_groups = []
+    if len(wd_no_scale_lr):
+        param_groups.append({'name': 'wd_no_scale_lr', 'params': wd_no_scale_lr, 'wd_mult': 1.0, 'lr_mult': 1.0})
+    if len(wd_scale_lr):
+        param_groups.append({'name': 'wd_scale_lr', 'params': wd_scale_lr, 'wd_mult': 1.0, 'lr_mult': lr_mult})
+    if len(no_wd_no_scale_lr):
+        param_groups.append({'name': 'no_wd_no_scale_lr', 'params': no_wd_no_scale_lr, 'wd_mult': 0.0, 'lr_mult': 1.0})
+    if len(no_wd_scale_lr):
+        param_groups.append({'name': 'no_wd_scale_lr', 'params': no_wd_scale_lr, 'wd_mult': 0.0, 'lr_mult': lr_mult})
+
+    return param_groups
 
 def get_optimizer_grouped_parameters(model,
                                      weight_decay,

@@ -25,7 +25,7 @@ from .mappings import (
     scatter_to_tensor_model_parallel_region,
 )
 from .random import (
-    #checkpoint,
+    checkpoint,
     get_cuda_rng_tracker,
     get_data_parallel_rng_tracker_name,
     model_parallel_cuda_manual_seed,
