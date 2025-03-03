@@ -258,6 +258,9 @@ parser.add_argument('--cache_model',
                     type=str,
                     default=None,
                     help='cached model dir')
+parser.add_argument('--static_seqlen',
+                    action='store_true',
+                    help='pad the sequences')
 parser.add_argument("--seed",
                     type=int,
                     default=1234,
@@ -338,8 +341,8 @@ def main(args):
     if os.path.exists(os.path.join(args.train_data,'image.info')):
         image_info = pyarrow.parquet.read_table(os.path.join(args.train_data,'image.info'))
         ratios = image_info['rat'].to_numpy().tolist()
-        args.max_num_patches = ratios[-1][3]
-        args.max_num_images = ratios[-1][4]
+        args.max_num_patches = int(ratios[-1][3])
+        args.max_num_images = int(ratios[-1][4])
         
     if args.eval_data:
         if os.path.isfile(args.eval_data):
@@ -368,6 +371,8 @@ def main(args):
     config.lora_alpha = args.lora_alpha
     config.only_ckpt_lora = args.only_ckpt_lora
     config.one_layerspec = not args.multi_layerspec
+    config.max_num_images = args.max_num_images
+    config.static_seqlen = args.static_seqlen
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
         spu.seqlens = get_interp_fuc(args.sequence_parallel_size,
@@ -424,7 +429,7 @@ def main(args):
     topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.model_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
-    if args.model_parallel_size >=1:
+    if args.model_parallel_size >1:
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
@@ -440,7 +445,6 @@ def main(args):
         parallel_config.batch_size = args.per_device_train_batch_size
         parallel_config.seq_length = config.seq_len
         parallel_config.low_mem = True
-        parallel_config.max_num_images = args.max_num_images
         parallel_config.max_num_patches = args.max_num_patches
         from jllm.model import ModelParallel
         with deepspeed.zero.Init(data_parallel_group=parallel_state.get_data_parallel_group(),
