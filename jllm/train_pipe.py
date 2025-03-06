@@ -84,6 +84,9 @@ parser.add_argument('--zero_stage',
 parser.add_argument('--split_dlayer',
                     action='store_true',
                     help='split decoder layers')
+# parser.add_argument('--sort_by_len',
+                    # action='store_true',
+                    # help='sort the samples by length')
 parser.add_argument('--num_layers_per_decoder',
                     type=int,
                     default=None,
@@ -258,9 +261,16 @@ parser.add_argument('--cache_model',
                     type=str,
                     default=None,
                     help='cached model dir')
-parser.add_argument('--static_seqlen',
-                    action='store_true',
-                    help='pad the sequences')
+# parser.add_argument('--static_vseqlen',
+                    # action='store_true',
+                    # help='pad the vlm sequences')
+# parser.add_argument('--static_lseqlen',
+                    # action='store_true',
+                    # help='pad the llm sequences')
+parser.add_argument("--padding_rate",
+                    type=float,
+                    default=0.0,
+                    help="padding the img length to padding_rate*max_num_patches.")               
 parser.add_argument("--seed",
                     type=int,
                     default=1234,
@@ -294,6 +304,7 @@ assert args.max_num_checkpoints != 0
 assert args.best_of>0
 if args.max_num_checkpoints<0:args.best_of=1
 if args.only_ckpt_lora:args.only_ckpt_model = True
+# if args.static_vseqlen:args.sort_by_len = True
 args.device = deepspeed.get_accelerator().device_name()
 if args.device == 'npu':
     import torch_npu
@@ -372,7 +383,7 @@ def main(args):
     config.only_ckpt_lora = args.only_ckpt_lora
     config.one_layerspec = not args.multi_layerspec
     config.max_num_images = args.max_num_images
-    config.static_seqlen = args.static_seqlen
+    
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
         spu.seqlens = get_interp_fuc(args.sequence_parallel_size,
@@ -446,6 +457,7 @@ def main(args):
         parallel_config.seq_length = config.seq_len
         parallel_config.low_mem = True
         parallel_config.max_num_patches = args.max_num_patches
+        parallel_config.padding_rate = args.padding_rate
         from jllm.model import ModelParallel
         with deepspeed.zero.Init(data_parallel_group=parallel_state.get_data_parallel_group(),
                          config_dict_or_path=ds_config,

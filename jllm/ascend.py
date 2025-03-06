@@ -816,8 +816,8 @@ def exe_adaptation():
     cross_entropy.get_tensor_model_parallel_world_size=get_tensor_model_parallel_world_size
     
     args=get_args()
-    args.optimize_recomp_communication_status = 1
-    args.optimize_recomp_communication_level = 1
+    args.optimize_recomp_communication_status = 0
+    args.optimize_recomp_communication_level = 0
     args.recompute_num_layers = 0
     args.swap_attention = False
     args.sequence_parallel = False
