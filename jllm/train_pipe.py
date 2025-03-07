@@ -227,6 +227,9 @@ parser.add_argument('--only_ckpt_lora',
 parser.add_argument('--only_cache_model',
                     action='store_true',
                     help='Only cache the model.')
+parser.add_argument('--force_4k',
+                    action='store_true',
+                    help='force the input_ids to 4k')
 parser.add_argument('--early_stop',
                     type=int,
                     default=-1,
@@ -396,7 +399,7 @@ def main(args):
         config.seq_len = spu.seqlens[spu.get_sequence_parallel_rank()+1](args.seq_len-1)-spu.seqlens[spu.get_sequence_parallel_rank()](args.seq_len-1)
     else:
         spu.seqlens = None
-        config.seq_len = args.seq_len-1 # (args.seq_len-1+args.sequence_parallel_size-1)//args.sequence_parallel_size+1
+        config.seq_len = (args.seq_len-1) if not args.force_4k else 4096 # (args.seq_len-1+args.sequence_parallel_size-1)//args.sequence_parallel_size+1
 
     if args.num_layers_per_decoder:
         config.split_dlayer = True
