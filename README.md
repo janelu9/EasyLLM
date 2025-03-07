@@ -1,4 +1,4 @@
-# *Flash Fine Tuning*
+# *EasyLLM*
 
 Training Large Language Model faster, easily and low-cost. 
 
@@ -263,11 +263,11 @@ If you find flash-finetuning useful or use flash-finetuning  code  in your resea
 ```bibtex
 @misc{flash-finetuning,
   author       = {Jian Lu},
-  title        = {Flash Fine Tuning: Training Large Language Model faster, easily and low-cost.},
+  title        = {EasyLLM: Training Large Language Model faster, easily and low-cost.},
   year         = {2023},
   publisher    = {GitHub},
   journal      = {GitHub repository},
-  howpublished = {\url{https://github.com/janelu9/flash-finetuning.git}},
+  howpublished = {\url{https://github.com/janelu9/EasyLLM.git}},
 }
 ```
 
