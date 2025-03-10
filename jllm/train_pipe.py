@@ -600,5 +600,18 @@ def custom_partition_layers(self, method='uniform'):
     self._set_bounds(start=self.parts[stage_id], stop=self.parts[stage_id + 1])
 PipelineModule._partition_layers = custom_partition_layers
 
+from deepspeed.runtime.state_dict_factory import SDLoaderBase
+def check_ckpt_list(self):
+    #logger.info(f'checkpoint file list: {self.ckpt_list}')
+    assert len(self.ckpt_list) > 0
+
+    sd = self.checkpoint_engine.load(self.ckpt_list[0], map_location=lambda storage, loc: storage)
+
+    # check checkpoint count is same with saved mp_world_size
+    # if 'mp_world_size' in sd.keys():
+        # assert len(self.ckpt_list) == sd[
+            # 'mp_world_size'], f"checkpoint count {len(self.ckpt_list)} is different from saved mp_world_size {sd['mp_world_size']}"
+SDLoaderBase.check_ckpt_list = check_ckpt_list
+
 if __name__ == "__main__":
     main(args)

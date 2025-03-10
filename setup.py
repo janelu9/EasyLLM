@@ -1,9 +1,40 @@
 import setuptools
 import io
+import subprocess
 
 project_name = "jllm"  
-version = "4.0.5" 
- 
+version = "4.0.5"
+
+def get_version(version):
+    try:
+        tag = subprocess.check_output(
+            ['git', 'describe', '--exact-match', '--tags', 'HEAD'],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        if re.match(r'^v?(\d+\.\d+\.\d+)$', tag):
+            return tag.lstrip('v')
+        else:
+            commit = _get_commit_short()
+            return f"{version}+{commit}"
+
+    except subprocess.CalledProcessError:
+        commit = _get_commit_short()
+        return f"{version}+{commit}"
+    except Exception:
+        return version
+
+def _get_commit_short():
+    try:
+        commit = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        return commit
+    except Exception:
+        return 'unknown'
+
+version = get_version(version)
+
 setuptools.setup(
     name=project_name,
     version=version,
