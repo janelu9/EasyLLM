@@ -1,5 +1,5 @@
 import setuptools
-import io
+import io,re
 import subprocess
 
 project_name = "jllm"  
@@ -12,16 +12,19 @@ def get_version(version):
             stderr=subprocess.DEVNULL
         ).decode().strip()
         if re.match(r'^v?(\d+\.\d+\.\d+)$', tag):
-            return tag.lstrip('v')
+            version = tag.lstrip('v')
         else:
             commit = _get_commit_short()
-            return f"{version}+{commit}"
-
+            version = f"{version}+{commit}"
     except subprocess.CalledProcessError:
         commit = _get_commit_short()
-        return f"{version}+{commit}"
+        version = f"{version}+{commit}"
     except Exception:
-        return version
+        version = version
+    is_dirty = _is_git_working_directory_dirty()
+    if is_dirty:
+        version += ".edited"
+    return version
 
 def _get_commit_short():
     try:
@@ -32,6 +35,22 @@ def _get_commit_short():
         return commit
     except Exception:
         return 'unknown'
+
+def _is_git_working_directory_dirty():
+    try:
+        subprocess.check_call(
+            ['git', 'diff', '--quiet'],
+            stderr=subprocess.DEVNULL
+        )
+        subprocess.check_call(
+            ['git', 'diff', '--cached', '--quiet'],
+            stderr=subprocess.DEVNULL
+        )
+        return False
+    except subprocess.CalledProcessError:
+        return True
+    except Exception:
+        return False
 
 version = get_version(version)
 
