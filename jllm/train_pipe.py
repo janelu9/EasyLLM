@@ -348,8 +348,12 @@ def main(args):
         args.train_data = cached_dir
     train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f))])
     data_info = open(os.path.join(args.train_data,[f for f in os.listdir(args.train_data) if f[-4:] == '.crc'][0])).read().split()
-    args.seq_len, num_field= int(data_info[1]),int(data_info[-1])
-    
+    seq_len, num_field= int(data_info[1]),int(data_info[-1])
+    args.seq_len=seq_len
+    if args.force_4k:
+        assert (seq_len-1)//4096>=1, 'force_4k requires seq_len>=4096.'
+        args.seq_len=4097
+
     args.max_num_patches = 0
     args.max_num_images = 0
     if os.path.exists(os.path.join(args.train_data,'image.info')):
@@ -399,7 +403,7 @@ def main(args):
         config.seq_len = spu.seqlens[spu.get_sequence_parallel_rank()+1](args.seq_len-1)-spu.seqlens[spu.get_sequence_parallel_rank()](args.seq_len-1)
     else:
         spu.seqlens = None
-        config.seq_len = (args.seq_len-1) if not args.force_4k else 4096 # (args.seq_len-1+args.sequence_parallel_size-1)//args.sequence_parallel_size+1
+        config.seq_len = args.seq_len-1 # (args.seq_len-1+args.sequence_parallel_size-1)//args.sequence_parallel_size+1
 
     if args.num_layers_per_decoder:
         config.split_dlayer = True
@@ -520,7 +524,7 @@ def main(args):
     ''' 
     num_train_batch =sum(
         int(open(os.path.join(args.train_data,f)).read().split()[0])//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
-        for f in os.listdir(args.train_data) if f[-4:] == '.crc') 
+        for f in os.listdir(args.train_data) if f[-4:] == '.crc')*((seq_len-1)//4096 if args.force_4k else 1)
     num_update_steps_per_epoch = num_train_batch // args.gradient_accumulation_steps + len(train_data_partitions) - 1
     args.num_training_steps = int(args.num_train_epochs * num_update_steps_per_epoch)
     if 'scheduler' not in ds_config:

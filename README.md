@@ -225,6 +225,12 @@ python -m jllm.cat2hf \
 
 ***Note**: Measured on 8 NVIDIA A100-PCIE-40GB GPUs with data type of bfloat16 and batch token size of 2304\*2048.*
 
+|    Model    | Training Speed (tokens/s) |
+| :---------: | :-----------------------: |
+| Qwen2.5-72b |         125327.23         |
+
+***Note**: Measured on 512 Ascend-910B NPUs with data type of bfloat16 and batch token size of 4096\*4096.*
+
 ## Inference
 
 vLLm is quoted here for Inference.
