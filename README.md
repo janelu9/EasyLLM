@@ -223,44 +223,13 @@ python -m jllm.cat2hf \
 | :------: | :-----------------------: |
 | llama-7b |         26335.232         |
 
-***Note**: Measured on 8 NVIDIA A100-PCIE-40GB GPUs with data type of bfloat16 and batch token size of 2304\*2048.*
+*8 NVIDIA A100-PCIE-40GB GPUs,  bfloat16, 2304\*2048 tokens/batch.*
 
 |    Model    | Training Speed (tokens/s) |
 | :---------: | :-----------------------: |
 | Qwen2.5-72b |         125327.23         |
 
-***Note**: Measured on 512 Ascend-910B NPUs with data type of bfloat16 and batch token size of 4096\*4096.*
-
-## Inference
-
-vLLm is quoted here for Inference.
-
-### Batch Inference
-
-```shell
-python batch_infer.py \
-    --model Qwen2.5-7B-Instruct-Finetune \
-    --prompt_file prompt.txt
-```
-
-### API Server
-
-Start the server:
-
-```shell
-python server.py --model Qwen2.5-7B-Instruct-Finetune
-```
-
-Query the model :
-
-```sehll
-curl http://localhost:8000/generate \
-    -H "Content-Type: application/json" \
-    -d '{
-        "messages":[{"user": "San Francisco is a"}],
-        "sampling":{"max_tokens":32}
-    }'
-```
+*512 **Ascend-910B-64GB NPUs** of Air-cooled, bfloat16, 4096\*4096 tokens/batch.*
 
 ## Citation
 
