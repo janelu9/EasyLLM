@@ -264,6 +264,9 @@ parser.add_argument('--cache_model',
                     type=str,
                     default=None,
                     help='cached model dir')
+parser.add_argument('--pad',
+                    action='store_true',
+                    help='padding samples to max_len.')
 # parser.add_argument('--static_vseqlen',
                     # action='store_true',
                     # help='pad the vlm sequences')
@@ -390,7 +393,7 @@ def main(args):
     config.only_ckpt_lora = args.only_ckpt_lora
     config.one_layerspec = not args.multi_layerspec
     config.max_num_images = args.max_num_images
-    
+    config.pad = args.pad
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
         spu.seqlens = get_interp_fuc(args.sequence_parallel_size,

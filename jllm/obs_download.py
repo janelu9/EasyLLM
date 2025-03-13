@@ -84,6 +84,11 @@ if __name__=='__main__':
     # rank = torch.distributed.get_rank()
     
     #obs_download(rank,world_size,args.pp,args.tp,args.model,args.data)
+    NODE_RANK = int(os.environ["NODE_RANK"])
+    sync_dir = '/'.join(args.model.rsplit(os.path.sep)[:3]+['sync'])
+    if NODE_RANK==0 and mox.file.exists(sync_dir):
+        mox.file.remove(sync_dir, recursive=True)
+
     print("下载开始时间:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     with ProcessPoolExecutor(max_workers=8) as exe:
         func = partial(obs_download,
@@ -92,15 +97,14 @@ if __name__=='__main__':
                        tp=args.tp,
                        model=args.model,
                        data=args.data)
-        NODE_RANK = int(os.environ["NODE_RANK"])*8
-        result = list(exe.map(func,range(NODE_RANK,NODE_RANK+8)))
         
-    sync_file='/'.join(args.model.rsplit(os.path.sep)[:3]+['sync',f'{int(os.environ["NODE_RANK"]):04}.txt'])
+        result = list(exe.map(func,range(NODE_RANK*8,NODE_RANK*8+8)))
+    sync_file=os.path.join(sync_dir,f'{NODE_RANK:04}.txt')
     with mox.file.File(sync_file, 'w') as f:
         for records in result:
             f.write('\n'.join(records)+'\n')
     print("下载完成时间:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    while len(mox.file.list_directory(os.path.dirname(sync_file), recursive=False)) != int(os.environ["WORLD_SIZE"])//8:
+    while len(mox.file.list_directory(sync_dir, recursive=False)) != int(os.environ["WORLD_SIZE"])//8:
         time.sleep(args.sleep)
     #torch.distributed.barrier()
     
