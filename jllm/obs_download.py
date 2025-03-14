@@ -14,42 +14,43 @@ def obs_download(rank,world_size,pp,tp,model,data):
     
     topo=np.arange(world_size).reshape(-1,pp,tp)
     dr,pr,tr=np.where(topo==rank)
-    mr=pr*tp+tr
-    
-    opt= 'bf16_zero_pp_rank_{dr}_mp_rank_{mr:02d}_optim_states.pt'
-    md = 'layer_{pr:02d}-model_{tr:02d}-model_states.pt'
-    ms = 'mp_rank_{mr:02d}_model_states.pt'
-    
-    downloads = [
-        opt.format(dr=dr.item(),mr=mr.item()),
-        md.format(pr=pr.item(),tr=tr.item()),
-        ms.format(mr=mr.item())
-    ]
-    
-    if tp>1:
-        tp_st = "tensor-{tr:02d}-of-{tp:02d}-pipeline-{pr:02d}-of-{pp:02d}.safetensors"
-        downloads.append(tp_st.format(tr=tr.item()+1,tp=tp,pr=pr.item()+1,pp=pp))
-    elif pp>1:
-        pp_st = "model-{pr:05d}-of-{pp:05d}.safetensors"
-        downloads.append(pp_st.format(pr=pr.item()+1,pp=pp))
-    else:
-        downloads.append('model.safetensors')
-    downloads.append('config.json')
-    
     downloaded = []
-    for file in downloads:
-        file_path = os.path.join(model,file)
-        if mox.file.exists(file_path):
-            if file.endswith('safetensors') or (file=='config.json' and rank%8==0):
-                mox.file.copy(file_path,os.path.join('/cache/model',file))
-                downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
-            elif file.endswith('pt'):
-                mox.file.copy(file_path,os.path.join('/cache/model/1',file))
-                downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": 1/"+file)
-    if rank%8==0 and os.path.exists('/cache/model/1'):
-        mox.file.copy(file_path,os.path.join('/cache/model/1',file))
-        downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": 1/"+file)
-        with open('/cache/model/latest','w') as f:f.write('1')
+    if model is not None:
+        mr=pr*tp+tr
+        
+        opt= 'bf16_zero_pp_rank_{dr}_mp_rank_{mr:02d}_optim_states.pt'
+        md = 'layer_{pr:02d}-model_{tr:02d}-model_states.pt'
+        ms = 'mp_rank_{mr:02d}_model_states.pt'
+        
+        downloads = [
+            opt.format(dr=dr.item(),mr=mr.item()),
+            md.format(pr=pr.item(),tr=tr.item()),
+            ms.format(mr=mr.item())
+        ]
+        
+        if tp>1:
+            tp_st = "tensor-{tr:02d}-of-{tp:02d}-pipeline-{pr:02d}-of-{pp:02d}.safetensors"
+            downloads.append(tp_st.format(tr=tr.item()+1,tp=tp,pr=pr.item()+1,pp=pp))
+        elif pp>1:
+            pp_st = "model-{pr:05d}-of-{pp:05d}.safetensors"
+            downloads.append(pp_st.format(pr=pr.item()+1,pp=pp))
+        else:
+            downloads.append('model.safetensors')
+        downloads.append('config.json')
+        
+        for file in downloads:
+            file_path = os.path.join(model,file)
+            if mox.file.exists(file_path):
+                if file.endswith('safetensors') or (file=='config.json' and rank%8==0):
+                    mox.file.copy(file_path,os.path.join('/cache/model',file))
+                    downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
+                elif file.endswith('pt'):
+                    mox.file.copy(file_path,os.path.join('/cache/model/1',file))
+                    downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": 1/"+file)
+        if rank%8==0 and os.path.exists('/cache/model/1'):
+            mox.file.copy(file_path,os.path.join('/cache/model/1',file))
+            downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": 1/"+file)
+            with open('/cache/model/latest','w') as f:f.write('1')
     if data is not None and mox.file.exists(data):
         if pr==0 and tr ==0:
             mox.file.copy_parallel(data,'/cache/data')
@@ -85,7 +86,7 @@ if __name__=='__main__':
     
     #obs_download(rank,world_size,args.pp,args.tp,args.model,args.data)
     NODE_RANK = int(os.environ["NODE_RANK"])
-    sync_dir = '/'.join(args.model.rsplit(os.path.sep)[:3]+['sync'])
+    sync_dir = '/'.join((args.model if args.model is not None else args.data).rsplit(os.path.sep)[:3]+['sync'])
     if NODE_RANK==0 and mox.file.exists(sync_dir):
         mox.file.remove(sync_dir, recursive=True)
 
