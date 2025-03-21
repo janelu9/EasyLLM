@@ -17,6 +17,7 @@ from .utils import (
 from .model import (
     autopartition_transformer,
     autopartition_decoder,
+    get_virtual_num_hidden_layers,
     convert_linear_layer_to_lora,
     only_optimize_lora_parameters,
     make_model_gradient_checkpointing_compatible,
@@ -87,9 +88,9 @@ parser.add_argument('--split_dlayer',
 # parser.add_argument('--sort_by_len',
                     # action='store_true',
                     # help='sort the samples by length')
-parser.add_argument('--num_layers_per_decoder',
+parser.add_argument('--moe_layer_pipe_size',
                     type=int,
-                    default=None,
+                    default=2,
                     help='num layers inner one decoder layer')
 parser.add_argument('--emb_partitions',
                     type=int,
@@ -107,10 +108,18 @@ parser.add_argument('--encoder_pipe_parallel_size',
                     type=int,
                     default=0,
                     help="encoder's pipe parallel size")
-parser.add_argument('--model_parallel_size',
+parser.add_argument('--tensor_parallel_size',
                     type=int,
                     default=1,
                     help='model parallel size')
+parser.add_argument('--expert_tensor_parallel_size',
+                    type=int,
+                    default=None,
+                    help='expert tensor parallel size')
+parser.add_argument('--expert_model_parallel_size',
+                    type=int,
+                    default=1,
+                    help='expert model parallel size')
 parser.add_argument('--sequence_parallel_size',
                     type=int,
                     default=1,
@@ -264,6 +273,15 @@ parser.add_argument('--cache_model',
                     type=str,
                     default=None,
                     help='cached model dir')
+# parser.add_argument('--pad',
+                    # action='store_true',
+                    # help='padding samples to max_len.')
+# parser.add_argument('--static_vseqlen',
+                    # action='store_true',
+                    # help='pad the vlm sequences')
+# parser.add_argument('--static_lseqlen',
+                    # action='store_true',
+                    # help='pad the llm sequences')
 parser.add_argument("--padding_rate",
                     type=float,
                     default=0.0,
@@ -316,8 +334,8 @@ def main(args):
     deepspeed.init_distributed(timeout=datetime.timedelta(seconds=args.timeout))
     args.global_rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
-    assert args.world_size % (args.pipe_parallel_size * args.model_parallel_size) == 0
-    args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.model_parallel_size)
+    assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size) == 0
+    args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size)
     assert args.data_parallel_size%args.sequence_parallel_size==0
     if args.gradient_accumulation_steps==0:
         args.gradient_accumulation_steps = args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size
@@ -366,7 +384,7 @@ def main(args):
             args.eval_data = cached_dir
         eval_data_partitions = sorted([os.path.join(args.eval_data,f) for f in os.listdir(args.eval_data) if os.path.isdir(os.path.join(args.eval_data,f))])
     
-    spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.model_parallel_size,args.sequence_parallel_size)
+    spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size,args.sequence_parallel_size)
     
     try:
         config = AutoConfig.from_pretrained(args.model,trust_remote_code=True)
@@ -384,7 +402,7 @@ def main(args):
     config.only_ckpt_lora = args.only_ckpt_lora
     config.one_layerspec = not args.multi_layerspec
     config.max_num_images = args.max_num_images
-
+    config.moe_layer_pipe_size=args.moe_layer_pipe_size
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
         spu.seqlens = get_interp_fuc(args.sequence_parallel_size,
@@ -392,20 +410,17 @@ def main(args):
                                      config.hidden_size*config.num_key_value_heads//config.num_attention_heads,
                                      args.seq_len-1,
                                      config.intermediate_size,
-                                     attention_alpha = args.attention_alpha-int(args.model_parallel_size>1),
+                                     attention_alpha = args.attention_alpha-int(args.tensor_parallel_size>1),
                                      dynamic=num_field>1)
         config.seq_len = spu.seqlens[spu.get_sequence_parallel_rank()+1](args.seq_len-1)-spu.seqlens[spu.get_sequence_parallel_rank()](args.seq_len-1)
     else:
         spu.seqlens = None
         config.seq_len = args.seq_len-1 # (args.seq_len-1+args.sequence_parallel_size-1)//args.sequence_parallel_size+1
 
-    if args.num_layers_per_decoder:
+    if hasattr(config,'num_experts_per_tok'):
         config.split_dlayer = True
-        config.num_layers_per_decoder=args.num_layers_per_decoder
         if not hasattr(config,'partition_method') or len(config.partition_method)!=args.pipe_parallel_size+1:
-            config.num_hidden_layers=config.num_hidden_layers*args.num_layers_per_decoder//2
-            config.partition_method = autopartition_transformer(config,args)
-            config.num_hidden_layers=config.num_hidden_layers//args.num_layers_per_decoder*2
+            config.partition_method =autopartition_transformer(config,args,get_virtual_num_hidden_layers[config.architectures[0]](config))
     elif not hasattr(config,'partition_method') or len(config.partition_method)!=args.pipe_parallel_size+1:
         if hasattr(config,'llm_config'):
             config.partition_method = autopartition_decoder(config.llm_config,args)
@@ -438,17 +453,21 @@ def main(args):
 
     torch.distributed.barrier()
     
-    topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.model_parallel_size])
+    topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
-    if args.model_parallel_size >1:
+    if args.tensor_parallel_size >1:
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
-        parallel_state.initialize_model_parallel(args.model_parallel_size,args.pipe_parallel_size)
+        parallel_state.initialize_model_parallel(args.tensor_parallel_size,
+                                                 args.pipe_parallel_size,
+                                                 expert_model_parallel_size=args.expert_model_parallel_size,
+                                                 expert_tensor_parallel_size=args.expert_tensor_parallel_size
+                                                 )
         tensor_parallel.model_parallel_cuda_manual_seed(args.seed)
         from jllm.core.model_parallel_config import ModelParallelConfig
-        parallel_config = ModelParallelConfig(tensor_model_parallel_size=args.model_parallel_size,
+        parallel_config = ModelParallelConfig(tensor_model_parallel_size=args.tensor_parallel_size,
                                               pipeline_model_parallel_size=args.pipe_parallel_size,
                                               params_dtype=config.torch_dtype,
                                               pipeline_dtype=config.torch_dtype,
@@ -456,7 +475,6 @@ def main(args):
                                              )
         parallel_config.batch_size = args.per_device_train_batch_size
         parallel_config.seq_length = config.seq_len
-        parallel_config.low_mem = True
         parallel_config.max_num_patches = args.max_num_patches
         parallel_config.padding_rate = args.padding_rate
         from jllm.model import ModelParallel
@@ -485,7 +503,7 @@ def main(args):
             return
     
     if args.lora_dim > 0:
-        if args.model_parallel_size > 1:
+        if args.tensor_parallel_size > 1:
             from peft import LoraConfig, inject_adapter_in_model
             lora_config = LoraConfig(
                 r=args.lora_dim,

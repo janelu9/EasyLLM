@@ -10,7 +10,7 @@ import time
 # from datetime import timedelta
 # from torch_npu.contrib import transfer_to_npu
 
-def obs_download(rank,world_size,pp,tp,model,data):
+def obs_download(rank,world_size,pp,tp,model,only_model,data):
     
     topo=np.arange(world_size).reshape(-1,pp,tp)
     dr,pr,tr=np.where(topo==rank)
@@ -23,11 +23,11 @@ def obs_download(rank,world_size,pp,tp,model,data):
         ms = 'mp_rank_{mr:02d}_model_states.pt'
         
         downloads = [
-            opt.format(dr=dr.item(),mr=mr.item()),
             md.format(pr=pr.item(),tr=tr.item()),
             ms.format(mr=mr.item())
         ]
-        
+        if not only_model:
+            downloads.append(opt.format(dr=dr.item(),mr=mr.item()))
         if tp>1:
             tp_st = "tensor-{tr:02d}-of-{tp:02d}-pipeline-{pr:02d}-of-{pp:02d}.safetensors"
             downloads.append(tp_st.format(tr=tr.item()+1,tp=tp,pr=pr.item()+1,pp=pp))
@@ -70,6 +70,7 @@ if __name__=='__main__':
     parser.add_argument('--tp', type=int,default=1,help='tp size' )
     parser.add_argument('--data', type=str,help='train data obs path')
     parser.add_argument('--model', type=str,help='model obs path')
+    parser.add_argument('--only_model', action='store_true',,help='only download model')
     parser.add_argument('--sleep', type=int,default=30,help='sleep seconds')
     args = parser.parse_args()
     
@@ -97,6 +98,7 @@ if __name__=='__main__':
                        pp=args.pp,
                        tp=args.tp,
                        model=args.model,
+                       only_model=args.only_model,
                        data=args.data)
         
         result = list(exe.map(func,range(NODE_RANK*8,NODE_RANK*8+8)))

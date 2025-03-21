@@ -421,7 +421,7 @@ def initialize_model_parallel(
     expert_tensor_parallel_size: Optional[int] = None,
     nccl_communicator_config_path: Optional[str] = None,
     distributed_timeout_minutes: int = 30,
-    order: str = "tp-pp-dp",
+    order: str = "tp-ep-pp-dp",
     encoder_tensor_model_parallel_size: int = 0,
     encoder_pipeline_model_parallel_size: Optional[int] = 0,
     get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
