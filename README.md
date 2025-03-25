@@ -233,10 +233,10 @@ python -m jllm.cat2hf \
 
 ## Citation
 
-If you find flash-finetuning useful or use flash-finetuning  code  in your research, please cite it in your publications.
+If you find EasyLLM useful or use EasyLLM's code  in your research, please cite it in your publications.
 
 ```bibtex
-@misc{flash-finetuning,
+@misc{EasyLLM,
   author       = {Jian Lu},
   title        = {EasyLLM: Training Large Language Model faster, easily and low-cost.},
   year         = {2023},
