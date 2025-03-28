@@ -206,16 +206,17 @@ python -m jllm.cat2hf \
 
 #### Supported Models
 
-|    Model     | Training Speed (tokens/s) |
-| :----------: | :-----------------------: |
-|  llama-13b   |       92749.82(old)       |
-| baichuan-13b |       79765.50(old)       |
-|   qwen-14b   |       80749.57(old)       |
-|  qwen2-moe   |             -             |
-|  internlm2   |             -             |
-|  internvl2   |             -             |
-|   qwen2-vl   |             -             |
-|  qwen2.5-vl  |                           |
+|      Model       | Training Speed (tokens/s) |
+| :--------------: | :-----------------------: |
+|    llama-13b     |       92749.82(old)       |
+|   baichuan-13b   |       79765.50(old)       |
+|     qwen-14b     |       80749.57(old)       |
+|    qwen2-moe     |             -             |
+|    internlm2     |             -             |
+|    internvl2     |             -             |
+|     qwen2-vl     |             -             |
+|    qwen2.5-vl    |                           |
+| deepseek-v3-671b |                           |
 
 ***Note**: The training speed of each model was measured on 64 NVIDIA A100-PCIE-40GB GPUs linked by 100Gb/s bandwidth of InfiniBand with data type of bfloat16 and batch token size of 2048\*2048 (batch_size\*sequence_length,  batch_size = micro_batch_size \* gradient_accumulation_steps).*
 
