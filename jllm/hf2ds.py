@@ -11,7 +11,7 @@ import gc,os,tqdm
 import torch
 
 '''
-python -m jllm.hf2ds -p 40 -t 8 -m unsloth/DeepSeek-R1 -o cached_model
+python -m jllm.hf2ds -p 41 -t 8 -m unsloth/DeepSeek-R1 -o cached_model
 '''
 
 def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
