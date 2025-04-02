@@ -20,7 +20,7 @@ def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
             tensor = tmp.pop(hk)
             if "embed_tokens" in hk or "lm_head" in hk or 'q_b_proj' in hk or 'kv_b_proj' in hk:
                 tensor = tensor.chunk(tensor_size,0)[tensor_rank].contiguous()
-            elif "o_proj" in hk or "down_proj" in hk:
+            elif "o_proj" in hk or "mlp.down_proj" in hk:
                 tensor = tensor.chunk(tensor_size,1)[tensor_rank].contiguous()
             state_dict[pk] = tensor
         elif "gate_up_proj" in pk and hk[0] in tmp:
@@ -31,7 +31,7 @@ if __name__=='__main__':
     parser.add_argument('-p','--pipe_parallel_size', type=int,default=1,help='pp size' )
     parser.add_argument('-t','--tensor_parallel_size', type=int,default=1,help='tp size')
     parser.add_argument('--moe_layer_pipe_size', type=int,default=5,help='moe size')
-    parser.add_argument('--partition_method', type=str,default='12,6',help='partition method')
+    parser.add_argument('--partition_method', type=str,default='13,7',help='partition method')
     parser.add_argument('-m','--model', type=str,help='model obs path')
     parser.add_argument('-o','--output', type=str,help='output')
     args = parser.parse_args()

@@ -70,7 +70,7 @@ if __name__=='__main__':
     parser.add_argument('--tp', type=int,default=1,help='tp size' )
     parser.add_argument('--data', type=str,help='train data obs path')
     parser.add_argument('--model', type=str,help='model obs path')
-    parser.add_argument('--only_model', action='store_true',,help='only download model')
+    parser.add_argument('--only_model', action='store_true',help='only download model')
     parser.add_argument('--sleep', type=int,default=30,help='sleep seconds')
     args = parser.parse_args()
     
