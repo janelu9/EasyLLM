@@ -359,8 +359,15 @@ def main(args):
         torch.distributed.barrier()
         args.train_data = cached_dir
     train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f))])
-    data_info = open(os.path.join(args.train_data,[f for f in os.listdir(args.train_data) if f[-4:] == '.crc'][0])).read().split()
-    seq_len, num_field= int(data_info[1]),int(data_info[-1])
+    num_train_batch=0
+    seq_len=0
+    for f in os.listdir(args.train_data):
+        if f[-4:] == '.crc':
+            with open(os.path.join(args.train_data,f))as crc:
+                info=crc.read().split()
+            num_train_batch+=int(info[0])//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
+            seq_len=max(seq_len,int(info[1]))
+    num_field = int(info[-1])
     args.seq_len=seq_len
     if args.force_4k:
         assert (seq_len-1)//4096>=1, 'force_4k requires seq_len>=4096.'
@@ -456,7 +463,7 @@ def main(args):
     topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
-    if args.tensor_parallel_size >1:
+    if args.tensor_parallel_size >=1:
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
@@ -534,9 +541,7 @@ def main(args):
     If you want to load the data into memory at one time, moving all the parquet files to same folder. 
     That may cause "num_update_steps_per_epoch" to be un-precision. But it donesn't matter.
     ''' 
-    num_train_batch =sum(
-        int(open(os.path.join(args.train_data,f)).read().split()[0])//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
-        for f in os.listdir(args.train_data) if f[-4:] == '.crc')*((seq_len-1)//4096 if args.force_4k else 1)
+    num_train_batch *=((seq_len-1)//4096 if args.force_4k else 1)
     num_update_steps_per_epoch = num_train_batch // args.gradient_accumulation_steps + len(train_data_partitions) - 1
     args.num_training_steps = int(args.num_train_epochs * num_update_steps_per_epoch)
     if 'scheduler' not in ds_config:
