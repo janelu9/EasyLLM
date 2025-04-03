@@ -17,12 +17,15 @@ python -m jllm.hf2ds -p 41 -t 8 -m unsloth/DeepSeek-R1 -o cached_model
 def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
     for pk,hk in pipe2hf.items():
         if hk in tmp:
-            tensor = tmp.pop(hk)
-            if "embed_tokens" in hk or "lm_head" in hk or 'q_b_proj' in hk or 'kv_b_proj' in hk:
-                tensor = tensor.chunk(tensor_size,0)[tensor_rank].contiguous()
-            elif "o_proj" in hk or "mlp.down_proj" in hk:
-                tensor = tensor.chunk(tensor_size,1)[tensor_rank].contiguous()
-            state_dict[pk] = tensor
+            if 'post_attention_layernorm' not in hk:
+                tensor = tmp.pop(hk)
+                if "embed_tokens" in hk or "lm_head" in hk or 'q_b_proj' in hk or 'kv_b_proj' in hk:
+                    tensor = tensor.chunk(tensor_size,0)[tensor_rank].contiguous()
+                elif "o_proj" in hk or "mlp.down_proj" in hk:
+                    tensor = tensor.chunk(tensor_size,1)[tensor_rank].contiguous()
+                state_dict[pk] = tensor
+            else:
+                state_dict[pk] = tmp[hk].clone()
         elif "gate_up_proj" in pk and hk[0] in tmp:
             state_dict[pk] = torch.cat([tmp.pop(k).chunk(tensor_size,0)[tensor_rank] for k in hk],0).contiguous()
 

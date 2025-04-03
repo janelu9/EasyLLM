@@ -463,7 +463,7 @@ def main(args):
     topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
-    if args.tensor_parallel_size >=1:
+    if args.tensor_parallel_size >1:
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
