@@ -62,7 +62,8 @@ if __name__=='__main__':
                                                        partitions,
                                                        layer_map,
                                                        num_expert_per_rank,
-                                                       num_expert_per_group)
+                                                       num_expert_per_group,
+                                                       config.num_nextn_predict_layers)
                                      
             state_dict={}
             source_dict={}
