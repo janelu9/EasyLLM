@@ -410,6 +410,8 @@ def main(args):
     config.one_layerspec = not args.multi_layerspec
     config.max_num_images = args.max_num_images
     config.moe_layer_pipe_size=args.moe_layer_pipe_size
+    config.gradient_accumulation_steps = args.gradient_accumulation_steps
+    
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
         spu.seqlens = get_interp_fuc(args.sequence_parallel_size,
