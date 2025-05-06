@@ -35,7 +35,7 @@ python -m jllm.raw2ids \
     -o dataset0_Qwen2.5-7B-Instruct
 ```
 
-Pre-train dataset's samples should be separated by *`'\n\n'`* in text files or be the value of  key*`'text'`* in jsonl files. Fine-tune's format should be *`[{'system':content},{'user':content},{'assistant':content},...] `* in each row of jsonl files, key*`'system'`* is not necessary. RLHF's format is like *`[index,{'user':content}] `.*  *`index`* is an ID of integer.
+Pre-train dataset's samples should be separated by *`'\n\n'`* in text files or be the value of  key *`'text'`* in jsonl files. Fine-tune's format should be *`[{'system':content},{'user':content},{'assistant':content},...] `* in each row of jsonl files, key *`'system'`* is not necessary. RLHF's format is like *`[index,{'user':content}] `.*  *`index`* is an ID of integer.
 
 **For Vision Language Model:**
 
