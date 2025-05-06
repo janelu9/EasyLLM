@@ -35,13 +35,7 @@ python -m jllm.raw2ids \
     -o dataset0_Qwen2.5-7B-Instruct
 ```
 
-***Note**:* 
-
-*Samples of pre-train dataset should be separated by `'\n\n'` in text files or be the value of  key`'text'` in jsonl files.* 
-
-*Fine-tune dataset's format should be `[{'system':content},{'user':content},{'assistant':content},...] ` in each row of jsonl files, key`'system'` is not necessary.*
-
- *RLHF's format is like `[index,{'user':content}] `*.  *`index` is an ID of integer.*
+Pre-train dataset's samples should be separated by *`'\n\n'`* in text files or be the value of  key*`'text'`* in jsonl files. Fine-tune's format should be *`[{'system':content},{'user':content},{'assistant':content},...] `* in each row of jsonl files, key*`'system'`* is not necessary. RLHF's format is like *`[index,{'user':content}] `.*  *`index`* is an ID of integer.
 
 **For Vision Language Model:**
 
@@ -53,9 +47,9 @@ python -m jllm.raw2ids \
     --max_len 32769 \
 ```
 
-Folder `images` stores all the images data.  Format of  `dataset_vl.jsonl` is like:
+Folder *`images`* stores all the images data.  Format of  *`dataset_vl.jsonl`* is like:
 
-`[{'user':['Give a description of these pictures please.\n <image>....','image0.jpg',...]},{'assistant':'This is ....'}]`
+*`[{'user':['Give a description of these pictures please.\n <image>....','image0.jpg',...]},{'assistant':'This is ....'}]`*
 
 ### Shuffle (For Pretrain)
 
@@ -184,7 +178,7 @@ The engine was designed to save checkpoint through background process by default
 
 Setting `--partition_method` to be `fast` will always get a faster training when GPU memory are enough.
 
-#### **Reinforcement Learning**:
+#### **Reinforcement Learning** (GRPO):
 
 1. Define a reward function in a python file which should include a `reward_func`:
 
@@ -205,7 +199,7 @@ def reward_func(index,response):
     return score
 ```
 
-2. Start a ray cluster for vLLM on the master node.
+2. Start a ray cluster for vLLM.
 
 ```shell
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 ray start --head --port 6380

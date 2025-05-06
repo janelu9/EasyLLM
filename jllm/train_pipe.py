@@ -351,6 +351,18 @@ parser.add_argument("--reward_func",
                     type=str,
                     default=None,
                     help="A py file include a function named `reward_func`.")
+parser.add_argument("--top_p",
+                    type=float,
+                    default=1,
+                    help="top p")
+parser.add_argument("--temperature",
+                    type=float,
+                    default=1,
+                    help="temperature")
+parser.add_argument("--repetition_penalty",
+                    type=float,
+                    default=1,
+                    help="repetition penalty")           
                
 parser = deepspeed.add_config_arguments(parser)
 args=parser.parse_args()
@@ -472,6 +484,9 @@ def main(args):
     config.num_generations = args.num_generations
     config.max_new_tokens = args.max_new_tokens
     config.reward_func = args.reward_func
+    config.top_p = args.top_p
+    config.repetition_penalty = args.repetition_penalty
+    config.temperature = args.temperature
 
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
