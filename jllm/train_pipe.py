@@ -11,6 +11,7 @@ from transformers import (
     SchedulerType,
     get_scheduler,)
 from .utils import (
+    dynamic_import_module,
     set_random_seed,
     get_param_groups,
     get_optimizer_grouped_parameters)
@@ -32,7 +33,6 @@ from functools import partial
 import pyarrow.parquet
 import numpy as np
 import os
-import importlib
 import datetime
 import argparse
 import sys
@@ -310,16 +310,55 @@ parser.add_argument("--lora_module_name",
 parser.add_argument('--only_optimize_lora',
                     action='store_true',
                     help='Only optimize the LoRA parameters.')
-                    
+# rlhf
+parser.add_argument('--rlhf',
+                    action='store_true',
+                    help='Reinforcement Learning.')
+parser.add_argument("--num_generations",
+                    type=int,
+                    default=3,
+                    help="num generations")
+parser.add_argument("--max_new_tokens",
+                    type=int,
+                    default=2,
+                    help="max new tokens")
+parser.add_argument("--vllm_sync_stage",
+                    type=int,
+                    default=0,
+                    choices=(0,1,2,3,4),
+                    help="how to sync weights to vllm. 0:ipc,1:nccl,2:cpu,3:nccl&ipc,4:nccl&cpu.")
+parser.add_argument("--ray_ip",
+                    type=str,
+                    default=None,
+                    help="ray's master ip.")
+parser.add_argument("--vllm_tp",
+                    type=int,
+                    default=1,
+                    help="vllm tp")
+parser.add_argument("--vllm_pp",
+                    type=int,
+                    default=1,
+                    help="vllm pp")
+parser.add_argument("--vllm_mem",
+                    type=float,
+                    default=0.6,
+                    help="vllm gpu_memory_utilization")
+parser.add_argument("--ray_gpus",
+                    type=int,
+                    default=1,
+                    help="num of each ray cluster's gpus.")
+parser.add_argument("--reward_func",
+                    type=str,
+                    default=None,
+                    help="A py file include a function named `reward_func`.")
+               
 parser = deepspeed.add_config_arguments(parser)
 args=parser.parse_args()
-get_train_ds_config = importlib.import_module(os.path.splitext(args.ds_config)[0]).get_train_ds_config if args.ds_config is not None else get_train_ds_config
 assert args.early_stop != 0
 assert args.max_num_checkpoints != 0
 assert args.best_of>0
 if args.max_num_checkpoints<0:args.best_of=1
 if args.only_ckpt_lora:args.only_ckpt_model = True
-# if args.static_vseqlen:args.sort_by_len = True
 args.device = deepspeed.get_accelerator().device_name()
 if args.device == 'npu':
     import torch_npu
@@ -332,6 +371,22 @@ def main(args):
     torch.cuda.set_device(args.local_rank)
     device = torch.device(args.device, args.local_rank)
     deepspeed.init_distributed(timeout=datetime.timedelta(seconds=args.timeout))
+    
+    if args.rlhf:
+        from jllm import rlhf
+        from vllm.utils import get_ip
+        ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
+        if args.local_rank==0:
+            rlhf.init_vllm(f"{ray_ip}:6380",
+                           args.model,
+                           gpu_memory_utilization=args.vllm_mem,
+                           tensor_parallel_size=args.vllm_tp,
+                           pipeline_parallel_size=args.vllm_pp,
+                           gpus=args.ray_gpus)
+        torch.distributed.barrier()
+        if args.local_rank!=0:
+            rlhf.init_vllm_actor(f"{ray_ip}:6380")
+        
     args.global_rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
     assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size) == 0
@@ -341,8 +396,10 @@ def main(args):
         args.gradient_accumulation_steps = args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size
     else:
         args.global_batch_size = args.per_device_train_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
-
-    ds_config = get_train_ds_config(offload=False,stage=args.zero_stage,)
+    
+    train_ds_config = get_train_ds_config
+    if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
+    ds_config = train_ds_config(offload=False,stage=args.zero_stage,)
     ds_config[
         'train_micro_batch_size_per_gpu'] = args.per_device_train_batch_size
     ds_config[
@@ -411,7 +468,11 @@ def main(args):
     config.max_num_images = args.max_num_images
     config.moe_layer_pipe_size=args.moe_layer_pipe_size
     config.gradient_accumulation_steps = args.gradient_accumulation_steps
-    
+    config.rlhf=args.rlhf
+    config.num_generations = args.num_generations
+    config.max_new_tokens = args.max_new_tokens
+    config.reward_func = args.reward_func
+
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
         spu.seqlens = get_interp_fuc(args.sequence_parallel_size,
@@ -465,7 +526,7 @@ def main(args):
     topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
-    if args.tensor_parallel_size >1:
+    if args.tensor_parallel_size > 1:
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
@@ -554,11 +615,11 @@ def main(args):
             num_training_steps=args.num_training_steps)
     
     engine, *_ = deepspeed.initialize(
-        args=args,
-        config=ds_config,
-        model=model,
-        optimizer=optimizer if "optimizer" not in ds_config else None,
-        lr_scheduler=lr_scheduler if "scheduler" not in ds_config else None,
+        args = args,
+        config = ds_config,
+        model = model if not args.rlhf else rlhf.make_duplicate_module(model),
+        optimizer = optimizer if "optimizer" not in ds_config else None,
+        lr_scheduler = lr_scheduler if "scheduler" not in ds_config else None,
         )
     engine.set_train_batch_size(engine.train_batch_size()*args.sequence_parallel_size)
     

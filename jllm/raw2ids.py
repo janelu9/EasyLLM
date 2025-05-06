@@ -124,9 +124,34 @@ def finetune_generator(file):
 def token_finetune(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = [],padding=False,filter_null=False):
     from jllm.data.utils import qa_inputs_generator
     for sample in finetune_generator(file):
-        js = json.loads(sample.strip())
-        pmt_anses = js['conversation'] if 'conversation' in js else js
-        if len(pmt_anses) > 1:
+        pmt_anses = json.loads(sample.strip())
+        if isinstance(pmt_anses[0],int):
+            labels  = np.array(pmt_anses.pop(0),dtype=np.int32)
+            msgs = (PREFIX + pmt_anses) if 'system' not in pmt_anses[0] else pmt_anses
+            msgs.append({'assistant':''})
+            ids = []
+            for start,msg in enumerate(msgs):
+                k,v = next(iter(msg.items()))
+                if k != "assistant":
+                    ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
+                    ids.extend(tokenizer.encode(v))
+                    pre_k = k
+                    break 
+            if k != 'system':
+                ids = ADAPT + ids
+            for msg in msgs[start+1:]:
+                k,v = next(iter(msg.items()))
+                if k != pre_k:
+                    if k != "assistant":
+                        ids.append(tokenizer.im_end_id)
+                    ids.extend(ROLE[k])
+                    ids.extend(tokenizer.encode(v))         
+                else:
+                    ids.extend(tokenizer.encode(v))
+                pre_k = k
+            yield {'input_ids':np.array(ids[-MAX_SEQ_LENGTH:],dtype=np.int32),'labels':labels}
+                
+        elif len(pmt_anses)>1:
             msgs = (PREFIX + pmt_anses) if 'system' not in pmt_anses[0] else pmt_anses
             ids = []; divide = [0]; 
             for start,msg in enumerate(msgs):
@@ -174,9 +199,6 @@ def token_finetune(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = [
                     if filter_null:
                         if np.sum(qa_inputs['labels']!=-100)<=1:
                             continue
-                            
-                    if 'category' in js:
-                        qa_inputs.update({"prompt_len":divide[1],"classes":int(js['category'])})
                     yield qa_inputs
    
 def write_parquet(filename,

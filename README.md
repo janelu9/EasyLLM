@@ -12,6 +12,8 @@ Training Large Language Model faster, easily and low-cost.
 
 ✦ Minimalist implementation of Sequence Parallelism (4D Parallelism for extra long context).
 
+✦ High performance of RLHF.
+
 ## Installation
 
 ```shell
@@ -33,7 +35,13 @@ python -m jllm.raw2ids \
     -o dataset0_Qwen2.5-7B-Instruct
 ```
 
-***Note**: Samples of pre-train dataset should be separated by `'\n\n'` in text files or be the value of  key`'text'` in jsonl files. Fine-tune dataset's format should be `[{'system':content},{'user':content},{'assistant':content},...] ` in each row of jsonl files, key`'system'` is not necessary.*
+***Note**:* 
+
+*Samples of pre-train dataset should be separated by `'\n\n'` in text files or be the value of  key`'text'` in jsonl files.* 
+
+*Fine-tune dataset's format should be `[{'system':content},{'user':content},{'assistant':content},...] ` in each row of jsonl files, key`'system'` is not necessary.*
+
+ *RLHF's format is like `[index,{'user':content}] `*.  *`index` is an ID of integer.*
 
 **For Vision Language Model:**
 
@@ -134,7 +142,7 @@ deepspeed --module jllm.train_pipe \
     --num_train_epochs 3 \
     --train_data dataset0_Qwen2.5-7B-Instruct \
     --pipe_parallel_size 2 \
-    --model_parallel_size 1 \
+    --tensor_parallel_size 1 \
     --sequence_parallel_size 2 \
     --per_device_train_batch_size 1 \
     --global_batch_size 32 \
@@ -155,7 +163,7 @@ deepspeed -H $HOSTFILE \
     --num_train_epochs 3 \
     --train_data dataset_vl_Qwen2.5-VL-7B-Instruct \
     --pipe_parallel_size 4 \
-    --model_parallel_size 4 \
+    --tensor_parallel_size 4 \
     --encoder_pipe_parallel_size 2 \
     --per_device_train_batch_size 1 \
     --global_batch_size 64 \
@@ -175,6 +183,59 @@ Generally, every GPU process reads one piece of data, that means one node with 8
 The engine was designed to save checkpoint through background process by default to save more time for training. **Don't save checkpoint too frequently** unless you disable checkpoint in background via the argument '`--background_executor none`' to avoid out of CPU memory.
 
 Setting `--partition_method` to be `fast` will always get a faster training when GPU memory are enough.
+
+#### **Reinforcement Learning**:
+
+1. Define a reward function in a python file which should include a `reward_func`:
+
+```python
+# reward.py
+def reward_func(index,response):
+    '''
+    Args:
+        index: int
+            Unique index of the train sample.
+        response: Tensor (n,) 
+            One generated token ids of trained actor.
+    return:
+    	score: Tensor (1,)
+    		The reward sorce of this response.
+    '''
+    '''TODO'''
+    return score
+```
+
+2. Start a ray cluster for vLLM on the master node.
+
+```shell
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 ray start --head --port 6380
+```
+
+3. Train:
+
+```shell
+deepspeed --module jllm.train_pipe \
+    --model Qwen2.5-7B-Instruct \
+    --num_train_epochs 3 \
+    --train_data dataset0_Qwen2.5-7B-Instruct \
+    --pipe_parallel_size 1 \
+    --tensor_parallel_size 8 \
+    --per_device_train_batch_size 1 \
+    --global_batch_size 32 \
+    --partition_method fast \
+    --split_dlayer \
+    --only_ckpt_model \
+    --max_num_checkpoints 2 \
+    --learning_rate 1e-5 \
+    --checkpoint checkpoint \
+    --rlhf \
+    --num_generations 16 \
+    --max_new_tokens 2048 \
+    --vllm_tp 8 \
+    --ray_gpus 8 \
+    --vllm_mem 0.12 \
+    --reward_func reward.py
+```
 
 #### Checkpoint Conversion
 

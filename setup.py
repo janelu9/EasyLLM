@@ -3,7 +3,7 @@ import io,re
 import subprocess
 
 project_name = "jllm"  
-version = "4.0.5"
+version = "5.0.0"
 
 def get_version(version):
     try:

@@ -7,4 +7,7 @@ opencv-python
 #flash-attn # Install the wheel package downloaded from https://github.com/Dao-AILab/flash-attention/releases
 pyarrow
 tiktoken
+timm
+scipy
+#vllm # For RLHF
 #torch_npu # Runing on NPUs

@@ -13,7 +13,14 @@ from transformers import set_seed, AutoTokenizer
 import json
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+import importlib.util
 
+def dynamic_import_module(file_path):
+    module_name=os.path.splitext(os.path.basename(file_path))[0]
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 def print_rank_0(msg, rank=0):
     if rank <= 0:

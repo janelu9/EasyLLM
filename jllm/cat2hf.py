@@ -1,15 +1,25 @@
-import os
-import gc
-from concurrent.futures import ProcessPoolExecutor
-import torch
-import tqdm
-import json
-import argparse
-from safetensors.torch import save_file, load_file
-from functools import partial
-save_file=partial(save_file,metadata={'format': 'pt'})
+def parallel_type(k):
+    if  "o_proj.weight" in k or "down_proj.weight" in k or 'attn.proj.weight' in k or 'mlp.fc2.weight' in k or 'mlp.2.weight' in k :
+        return 1
+    if "lm_head" in k or "gate_proj" in k or "up_proj" in k or "embed_tokens" in k or "q_proj" in k \
+    or "k_proj" in k or "v_proj" in k or 'attn.qkv' in k or 'mlp.fc1' in k or 'mlp.0' in k \
+    or 'q_b_proj' in k or 'kv_b_proj' in k:
+        return 0
+    return -1
+
 
 if __name__=='__main__':
+    import os
+    import gc
+    from concurrent.futures import ProcessPoolExecutor
+    import torch
+    import tqdm
+    import json
+    import argparse
+    from safetensors.torch import save_file, load_file
+    from functools import partial
+    save_file=partial(save_file,metadata={'format': 'pt'})
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('-C','--ckpt', type=str, help="checkpoint.")
     parser.add_argument('-H','--hf',type=str,default="",help="Where to store the model.")
@@ -36,12 +46,9 @@ if __name__=='__main__':
         model_file =f"model-{pipe_rank:05d}-of-"+f"{num_stages:05d}.safetensors"
         
         for k in tqdm.tqdm(keys):
-            if  "o_proj.weight" in k or "down_proj.weight" in k or 'attn.proj.weight' in k or 'mlp.fc2.weight' in k or 'mlp.2.weight' in k :
-                state_dict[k] = torch.cat([p[1].pop(k) for p in pts],1)
-            elif "lm_head" in k or "gate_proj" in k or "up_proj" in k or "embed_tokens" in k or "q_proj" in k \
-            or "k_proj" in k or "v_proj" in k or 'attn.qkv' in k or 'mlp.fc1' in k or 'mlp.0' in k \
-            or 'q_b_proj' in k or 'kv_b_proj' in k:
-                state_dict[k] = torch.cat([p[1].pop(k) for p in pts])
+            dim = parallel_type(k)
+            if dim >=0:
+                state_dict[k] = torch.cat([p[1].pop(k) for p in pts],dim)
             else:
                 state_dict[k] = pts[0][1].pop(k)
             index["metadata"]["total_size"] +=state_dict[k].nbytes
