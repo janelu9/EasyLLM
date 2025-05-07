@@ -383,22 +383,6 @@ def main(args):
     torch.cuda.set_device(args.local_rank)
     device = torch.device(args.device, args.local_rank)
     deepspeed.init_distributed(timeout=datetime.timedelta(seconds=args.timeout))
-    
-    if args.rlhf:
-        from jllm import rlhf
-        from vllm.utils import get_ip
-        ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
-        if args.local_rank==0:
-            rlhf.init_vllm(f"{ray_ip}:6380",
-                           args.model,
-                           gpu_memory_utilization=args.vllm_mem,
-                           tensor_parallel_size=args.vllm_tp,
-                           pipeline_parallel_size=args.vllm_pp,
-                           gpus=args.ray_gpus)
-        torch.distributed.barrier()
-        if args.local_rank!=0:
-            rlhf.init_vllm_actor(f"{ray_ip}:6380")
-        
     args.global_rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
     assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size) == 0
@@ -408,18 +392,7 @@ def main(args):
         args.gradient_accumulation_steps = args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size
     else:
         args.global_batch_size = args.per_device_train_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
-    
-    train_ds_config = get_train_ds_config
-    if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
-    ds_config = train_ds_config(offload=False,stage=args.zero_stage,)
-    ds_config[
-        'train_micro_batch_size_per_gpu'] = args.per_device_train_batch_size
-    ds_config[
-        'train_batch_size'] = args.global_batch_size//args.sequence_parallel_size
-    ds_config['steps_per_print'] = args.steps_per_print
-    set_random_seed(args.seed)
-    if args.checkpoint: 
-        os.makedirs(args.checkpoint,exist_ok=True)
+
     if os.path.isfile(args.train_data):
         cached_dir = os.path.join(os.path.dirname(args.train_data),os.path.splitext(os.path.basename(args.train_data))[0] + f"_{os.path.basename(args.model)}")
         if args.global_rank ==0:
@@ -428,6 +401,7 @@ def main(args):
         torch.distributed.barrier()
         args.train_data = cached_dir
     train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f))])
+    
     num_train_batch=0
     seq_len=0
     for f in os.listdir(args.train_data):
@@ -441,7 +415,37 @@ def main(args):
     if args.force_4k:
         assert (seq_len-1)//4096>=1, 'force_4k requires seq_len>=4096.'
         args.seq_len=4097
-
+        
+    if args.rlhf:
+        from jllm import rlhf
+        from vllm.utils import get_ip
+        ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
+        if args.local_rank==0:
+            rlhf.init_vllm(f"{ray_ip}:6380",
+                           args.model,
+                           gpu_memory_utilization=args.vllm_mem,
+                           tensor_parallel_size=args.vllm_tp,
+                           pipeline_parallel_size=args.vllm_pp,
+                           gpus=args.ray_gpus,
+                           max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.seq_len,
+                           max_model_len =args.max_new_tokens+args.seq_len)
+        torch.distributed.barrier()
+        if args.local_rank!=0:
+            rlhf.connect_vllm_actor(f"{ray_ip}:6380")
+            
+    train_ds_config = get_train_ds_config
+    if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
+    ds_config = train_ds_config(offload=False,stage=args.zero_stage,)
+    ds_config[
+        'train_micro_batch_size_per_gpu'] = args.per_device_train_batch_size
+    ds_config[
+        'train_batch_size'] = args.global_batch_size//args.sequence_parallel_size
+    ds_config['steps_per_print'] = args.steps_per_print
+    set_random_seed(args.seed)
+    
+    if args.checkpoint: 
+        os.makedirs(args.checkpoint,exist_ok=True)
+        
     args.max_num_patches = 0
     args.max_num_images = 0
     if os.path.exists(os.path.join(args.train_data,'image.info')):

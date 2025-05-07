@@ -213,7 +213,7 @@ deepspeed --module jllm.train_pipe \
     --num_train_epochs 3 \
     --train_data dataset0_Qwen2.5-7B-Instruct \
     --pipe_parallel_size 1 \
-    --tensor_parallel_size 8 \
+    --tensor_parallel_size 4 \
     --per_device_train_batch_size 1 \
     --global_batch_size 32 \
     --partition_method fast \
@@ -222,12 +222,14 @@ deepspeed --module jllm.train_pipe \
     --max_num_checkpoints 2 \
     --learning_rate 1e-5 \
     --checkpoint checkpoint \
+    --checkpoint_grad_interval 2 \
     --rlhf \
-    --num_generations 16 \
-    --max_new_tokens 2048 \
-    --vllm_tp 8 \
+    --num_generations 4 \
+    --max_new_tokens 64 \
+    --vllm_tp 4 \
     --ray_gpus 8 \
-    --vllm_mem 0.12 \
+    --vllm_mem 0.2 \
+    --vllm_sync_stage 2 \
     --reward_func reward.py
 ```
 

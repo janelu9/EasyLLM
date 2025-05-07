@@ -5,10 +5,6 @@ import moxing as mox
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 import time
-# import torch
-# import torch_npu
-# from datetime import timedelta
-# from torch_npu.contrib import transfer_to_npu
 
 def obs_download(rank,world_size,pp,tp,model,only_model,data):
     
@@ -74,18 +70,6 @@ if __name__=='__main__':
     parser.add_argument('--sleep', type=int,default=30,help='sleep seconds')
     args = parser.parse_args()
     
-    # init_process_group_kwargs = {
-        # 'rank' : int(os.environ.get("RANK", 0)),
-        # 'world_size' : int(os.environ.get("WORLD_SIZE", 1)),
-        # 'backend' : 'hccl',
-        # 'timeout': timedelta(minutes=args.timeout),
-        # }
-
-    # torch.distributed.init_process_group(**init_process_group_kwargs)
-    # world_size = torch.distributed.get_world_size()
-    # rank = torch.distributed.get_rank()
-    
-    #obs_download(rank,world_size,args.pp,args.tp,args.model,args.data)
     NODE_RANK = int(os.environ["NODE_RANK"])
     sync_dir = '/'.join((args.model if args.model is not None else args.data).rsplit(os.path.sep)[:3]+['sync'])
     if NODE_RANK==0 and mox.file.exists(sync_dir):
@@ -109,5 +93,4 @@ if __name__=='__main__':
     print("下载完成时间:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     while len(mox.file.list_directory(sync_dir, recursive=False)) != int(os.environ["WORLD_SIZE"])//8:
         time.sleep(args.sleep)
-    #torch.distributed.barrier()
     

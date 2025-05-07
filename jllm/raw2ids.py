@@ -126,7 +126,7 @@ def token_finetune(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = [
     for sample in finetune_generator(file):
         pmt_anses = json.loads(sample.strip())
         if isinstance(pmt_anses[0],int):
-            labels  = np.array(pmt_anses.pop(0),dtype=np.int32)
+            labels  = np.array([0,pmt_anses.pop(0)],dtype=np.int32)
             msgs = (PREFIX + pmt_anses) if 'system' not in pmt_anses[0] else pmt_anses
             msgs.append({'assistant':''})
             ids = []
