@@ -1,4 +1,57 @@
+import os,asyncio
+import ray
+from vllm import LLM
 from jllm.cat2hf import parallel_type
+
+class vLLM(LLM):
+    def __init__(self, *args, **kwargs):
+        os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+        super().__init__(*args, **kwargs)
+        self.running = True
+
+    async def run_forever(self):
+        while self.running:
+            await asyncio.sleep(1)
+
+    def stop(self):
+        self.running = False
+        
+def init_vllm(address,
+              model,
+              gpu_memory_utilization=0.6,
+              tensor_parallel_size=1,
+              pipeline_parallel_size=1,
+              gpus=1,
+              max_num_batched_tokens=1024,
+              max_model_len=1024):
+    from ray.util.placement_group import placement_group
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+    
+    ray.init(address=address,ignore_reinit_error=True)
+    pg = placement_group([{"GPU": 1, "CPU": 0}]*gpus)
+    ray.get(pg.ready())
+
+    vllm_actor = ray.remote(
+        num_cpus=0,
+        num_gpus=0,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True,
+        ),
+    )(vLLM).options(name="llm",namespace="vllm",).remote(
+        model=model,
+        enforce_eager=True,
+        worker_extension_cls="jllm.vllm.WorkerExtension",
+        tensor_parallel_size=tensor_parallel_size,
+        pipeline_parallel_size=pipeline_parallel_size,
+        distributed_executor_backend="ray",
+        gpu_memory_utilization=gpu_memory_utilization,
+        max_num_batched_tokens=max_num_batched_tokens,
+        max_model_len=max_model_len
+    )
+    ray.get(vllm_actor.collective_rpc.remote("report_device_id", args=tuple()))
+    vllm_actor.run_forever.remote()
+    return vllm_actor
 
 class WorkerExtension:
 
@@ -29,9 +82,9 @@ class WorkerExtension:
                 if self.tp_size>1 and tile:
                     dim = parallel_type(name)
                     if dim==0:
-                        tensor=tensor.tile(self.tp_size,1)
+                        tensor=tensor.tile(self.tp_size,1) if tensor.dim()==2 else tensor.tile(self.tp_size)
                     elif dim==1:
-                        tensor=tensor.tile(1,self.tp_size)
+                        tensor=tensor.tile(1,self.tp_size) if tensor.dim()==2 else tensor.tile(self.tp_size)
                 weights.append((name, tensor))
             self.model_runner.model.load_weights(weights=weights)
 
@@ -74,9 +127,9 @@ class WorkerExtension:
                 if self.tp_size>1 and tile:
                     dim = parallel_type(name)
                     if dim==0:
-                        tensor = tensor.tile(self.tp_size,1)
+                        tensor = tensor.tile(self.tp_size,1) if tensor.dim()==2 else tensor.tile(self.tp_size)
                     elif dim==1:
-                        tensor = tensor.tile(1,self.tp_size)
+                        tensor = tensor.tile(1,self.tp_size) if tensor.dim()==2 else tensor.tile(self.tp_size)
                 weights.append((name, tensor))
             self.model_runner.model.load_weights(weights=weights)
             torch.cuda.synchronize()
@@ -90,3 +143,65 @@ class WorkerExtension:
             weights_updated = weights_updated and torch.allclose(
                 p, torch.zeros_like(p))
         return weights_updated
+        
+if __name__=='__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='vllm')
+    parser.add_argument("--model",
+                        type=str,
+                        default= "",
+                        help="huggingface's model path")
+    parser.add_argument("--max_prefill_len",
+                        type=int,
+                        default=128,
+                        help="max prefill length")
+    parser.add_argument("--num_generations",
+                        type=int,
+                        default=3,
+                        help="num generations")
+    parser.add_argument("--max_new_tokens",
+                        type=int,
+                        default=64,
+                        help="max new tokens")
+    parser.add_argument("--ray_ip",
+                        type=str,
+                        default=None,
+                        help="ray's master ip.")
+    parser.add_argument("--vllm_tp",
+                        type=int,
+                        default=1,
+                        help="vllm tp")
+    parser.add_argument("--vllm_pp",
+                        type=int,
+                        default=1,
+                        help="vllm pp")
+    parser.add_argument("--vllm_mem",
+                        type=float,
+                        default=0.6,
+                        help="vllm gpu_memory_utilization")
+    parser.add_argument("--ray_gpus",
+                        type=int,
+                        default=1,
+                        help="num of each ray cluster's gpus.")
+                        
+    args=parser.parse_args()
+    args.model=os.path.abspath(args.model)
+    from vllm.utils import get_ip
+    import daemon
+    from daemon import pidfile
+    ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
+    with daemon.DaemonContext(
+        pidfile=pidfile.TimeoutPIDLockFile("/tmp/vllm_service.pid"),
+        stdout=open('vllm_service.log', 'w+'),
+        stderr=open('vllm_service_error.log', 'w+'),
+        files_preserve=[],
+    ):
+        actor=init_vllm(f"{ray_ip}:6380",
+                   args.model,
+                   gpu_memory_utilization=args.vllm_mem,
+                   tensor_parallel_size=args.vllm_tp,
+                   pipeline_parallel_size=args.vllm_pp,
+                   gpus=args.ray_gpus,
+                   max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.max_prefill_len,
+                   max_model_len =args.max_new_tokens+args.max_prefill_len)
+        ray.get(actor.run_forever.remote()) 
