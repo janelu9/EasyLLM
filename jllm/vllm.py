@@ -29,7 +29,7 @@ class WorkerExtension:
     
     def report_rank_of_global_rank_in_vllm_in_ray(self, device_uuid):
         from vllm.distributed.parallel_state import get_world_group
-        if device_uuid == self.report_device_id():
+        if device_uuid == self.device_uuid:
             return get_world_group().rank
         return -1
     
@@ -143,7 +143,7 @@ def init_vllm(address,
         max_num_batched_tokens=max_num_batched_tokens,
         max_model_len=max_model_len,
     )
-    ray.get(vllm_actor.collective_rpc.remote("report_device_id", args=tuple()))
+    ray.get(vllm_actor.collective_rpc.remote("report_device_id"))
     return vllm_actor
 
 if __name__=='__main__':
