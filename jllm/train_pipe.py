@@ -319,11 +319,11 @@ parser.add_argument('--isolated_vllm',
                     help='isolated vllm')
 parser.add_argument("--num_generations",
                     type=int,
-                    default=5,
+                    default=4,
                     help="num generations")
 parser.add_argument("--max_new_tokens",
                     type=int,
-                    default=32,
+                    default=33,
                     help="max new tokens")
 parser.add_argument("--vllm_sync_stage",
                     type=int,
@@ -344,7 +344,7 @@ parser.add_argument("--vllm_pp",
                     help="vllm pp")
 parser.add_argument("--vllm_mem",
                     type=float,
-                    default=0.6,
+                    default=0.5,
                     help="vllm gpu_memory_utilization")
 parser.add_argument("--ray_gpus",
                     type=int,
@@ -500,7 +500,7 @@ def main(args):
     config.top_p = args.top_p
     config.repetition_penalty = args.repetition_penalty
     config.temperature = args.temperature
-
+    
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
         from jllm.data.utils import get_interp_fuc
         spu.seqlens = get_interp_fuc(args.sequence_parallel_size,
