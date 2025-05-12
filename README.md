@@ -202,34 +202,31 @@ def reward_func(index,response):
 2. Start a ray cluster for vLLM.
 
 ```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 ray start --head --port 6380
+CUDA_VISIBLE_DEVICES=7 ray start --head --port 6380
 ```
 
 3. Train:
 
 ```shell
-deepspeed --module jllm.train_pipe \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 deepspeed --module jllm.train_pipe \
     --model Qwen2.5-7B-Instruct \
-    --num_train_epochs 3 \
+    --num_train_epochs 2 \
     --train_data dataset0_Qwen2.5-7B-Instruct \
-    --pipe_parallel_size 1 \
-    --tensor_parallel_size 4 \
+    --pipe_parallel_size 7 \
+    --tensor_parallel_size 1 \
     --per_device_train_batch_size 1 \
     --global_batch_size 32 \
-    --partition_method fast \
+    --partition_method mem \
     --split_dlayer \
     --only_ckpt_model \
     --max_num_checkpoints 2 \
     --learning_rate 1e-5 \
     --checkpoint checkpoint \
-    --checkpoint_grad_interval 2 \
+    --checkpoint_grad_interval 4 \
     --rlhf \
     --num_generations 4 \
     --max_new_tokens 64 \
-    --vllm_tp 4 \
-    --ray_gpus 8 \
-    --vllm_mem 0.2 \
-    --vllm_sync_stage 2 \
+    --vllm_sync_stage 1 \
     --reward_func reward.py
 ```
 

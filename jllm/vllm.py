@@ -1,4 +1,5 @@
-import os,asyncio
+import os
+import torch
 import ray
 from vllm import LLM
 from jllm.cat2hf import parallel_type
