@@ -18,20 +18,22 @@ class WorkerExtension:
 
     def report_device_id(self) -> str:
         from vllm.platforms import current_platform
-        from vllm.distributed.parallel_state import get_tensor_model_parallel_world_size
+        from vllm.distributed import parallel_state as mpu
         self.device_uuid = current_platform.get_device_uuid(self.device.index)
-        self.tp_size = get_tensor_model_parallel_world_size()
+        self.tp_size = mpu.get_tensor_model_parallel_world_size()
+        self.tp_rank = mpu.get_tensor_model_parallel_rank()
+        self.pp_size = mpu.get_pp_group().world_size
+        self.pp_rank = mpu.get_pp_group().rank_in_group
         self.model_update_groups={}
         return self.device_uuid
         
-    def report_world_size(self) -> str:
-        from vllm.distributed.parallel_state import get_world_group
-        return get_world_group().world_size
+    def report_pipeline_size(self):
+        return self.pp_size
     
-    def report_rank_of_global_rank_in_vllm_in_ray(self, device_uuid):
+    def report_pp_rank_of_global_rank_in_vllm(self, device_uuid):
         from vllm.distributed.parallel_state import get_world_group
         if device_uuid == self.device_uuid:
-            return get_world_group().rank
+            return self.pp_rank
         return -1
     
     def update_weight_by_cpu_handles(self, cpu_handles,tile=True):
@@ -50,11 +52,18 @@ class WorkerExtension:
                 weights.append((name, tensor))
             self.model_runner.model.load_weights(weights=weights)
 
-    def init_weight_update_group(self, master_address, master_port, global_rank, world_size, rank_offset=1, rank_of_global_rank_in_vllm=-1):
+    def init_weight_update_group(self, 
+                                 master_address,
+                                 master_port,
+                                 global_rank,
+                                 world_size,
+                                 rank_offset=1,
+                                 pp_rank_of_global_rank_in_vllm=-1,
+                                 train_tp_rank=0):
         from vllm.distributed.parallel_state import get_world_group
-        rank = get_world_group().rank
-        if rank != rank_of_global_rank_in_vllm:
-            if rank < rank_of_global_rank_in_vllm or rank_of_global_rank_in_vllm == -1:
+        rank = self.pp_rank
+        if rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
+            if rank < pp_rank_of_global_rank_in_vllm or pp_rank_of_global_rank_in_vllm == -1:
                 rank += rank_offset
             self.model_update_groups[global_rank] = stateless_init_process_group(
                 master_address,
@@ -64,16 +73,25 @@ class WorkerExtension:
                 self.device,
             )
 
-    def update_weight_by_nccl(self,global_rank, name, dtype, shape, rank_of_global_rank_in_vllm=-1):
+    def update_weight_by_nccl(self,
+                              global_rank,
+                              name, dtype, shape, 
+                              pp_rank_of_global_rank_in_vllm=-1,
+                              train_tp_rank=0,
+                              tile=True):
         from vllm.distributed.parallel_state import get_world_group
-        if get_world_group().rank != rank_of_global_rank_in_vllm:
+        if self.pp_rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
             weight = torch.empty(shape, dtype=dtype, device="cuda")
             self.model_update_groups[global_rank].broadcast(weight,
                                                             src=0,
                                                             stream=torch.cuda.current_stream())
-
+            if self.tp_size>1 and tile:
+                dim = parallel_type(name)
+                if dim==0:
+                    weight = weight.tile(self.tp_size,1) if weight.dim()==2 else weight.tile(self.tp_size)
+                elif dim==1:
+                    weight = weight.tile(1,self.tp_size) if weight.dim()==2 else weight.tile(self.tp_size)
             self.model_runner.model.load_weights(weights=[(name, weight)])
-
             del weight
 
     def update_weights_by_ipc_handles(self, ipc_handles,tile=True):
@@ -95,16 +113,6 @@ class WorkerExtension:
                 weights.append((name, tensor))
             self.model_runner.model.load_weights(weights=weights)
             torch.cuda.synchronize()
-
-    def check_weights_changed(self):
-        """
-        Check if the weights are updated to 0.
-        """
-        weights_updated = True
-        for name, p in self.model_runner.model.named_parameters():
-            weights_updated = weights_updated and torch.allclose(
-                p, torch.zeros_like(p))
-        return weights_updated
 
 class vLLM(LLM):
     def __init__(self, *args, **kwargs):
