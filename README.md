@@ -236,7 +236,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 deepspeed --module jllm.train_pipe \
     --num_generations 4 \
     --max_new_tokens 64 \
     --vllm_sync_stage 1 \
-    --reward_func reward.py
+    --reward_func reward.py \
+    --isolated_vllm
 ```
 
 #### Checkpoint Conversion
