@@ -11,7 +11,7 @@ import gc,os,tqdm
 import torch
 
 '''
-python -m jllm.hf2ds -p 43 -t 8 -m unsloth/DeepSeek-R1 -o cached_model
+python -m jllm.hf2ds -p 43 -t 8 -e 1 -m unsloth/DeepSeek-R1 -o cached_model
 '''
 
 def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
@@ -33,6 +33,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p','--pipe_parallel_size', type=int,default=1,help='pp size' )
     parser.add_argument('-t','--tensor_parallel_size', type=int,default=1,help='tp size')
+    parser.add_argument('-e','--expert_parallel_size', type=int,default=1,help='ep size')
     parser.add_argument('--moe_layer_pipe_size', type=int,default=5,help='moe size')
     parser.add_argument('--partition_method', type=str,default='13,7',help='partition method')
     parser.add_argument('-m','--model', type=str,help='model obs path')
@@ -55,15 +56,14 @@ if __name__=='__main__':
     partitions = autopartition_transformer(config,args,deepseek_v3_get_num_hidden_layers(config))
     print(f'partitions:{partitions}')
     def hf2ds(p):
-        for t in range(args.tensor_parallel_size):
-            pipe2hf=DeepseekV3ForCausalLM.get_pipe2hf(
-                                                       p,
-                                                       t,
-                                                       partitions,
-                                                       layer_map,
-                                                       num_expert_per_rank,
-                                                       num_expert_per_group,
-                                                       config.num_nextn_predict_layers)
+        for te in range(args.tensor_parallel_size*args.expert_parallel_size):
+            pipe2hf=DeepseekV3ForCausalLM.get_pipe2hf(p,
+                                                      te,
+                                                      partitions,
+                                                      layer_map,
+                                                      num_expert_per_rank,
+                                                      num_expert_per_group,
+                                                      config.num_nextn_predict_layers)
                                      
             state_dict={}
             source_dict={}
@@ -81,8 +81,8 @@ if __name__=='__main__':
                     source_dict[k] = tmp.pop(k)
                 del tmp
                 gc.collect()
-            get_weights_(pipe2hf,state_dict,source_dict,t,tensor_size)
-            model_file=os.path.join(args.output,f"tensor-{t + 1:02d}-of-{tensor_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" )
+            get_weights_(pipe2hf,state_dict,source_dict,te%tensor_size,tensor_size)
+            model_file=os.path.join(args.output,f"tensor-{te + 1:02d}-of-{tensor_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" )
             save_file(state_dict,model_file)
             print(f'saved {model_file}')
         
