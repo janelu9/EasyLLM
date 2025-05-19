@@ -117,6 +117,7 @@ class WorkerExtension:
 class vLLM(LLM):
     def __init__(self, *args, **kwargs):
         os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+        os.environ.pop("ASCEND_RT_VISIBLE_DEVICES", None)
         super().__init__(*args, **kwargs)
         
 def init_vllm(address,
@@ -131,7 +132,10 @@ def init_vllm(address,
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
     
     ray.init(address=address,ignore_reinit_error=True)
-    pg = placement_group([{"GPU": 1, "CPU": 0}]*gpus)
+    if hasattr(torch,'npu'):
+        pg = placement_group([{"NPU": 1, "CPU": 0}]*gpus)
+    else:
+        pg = placement_group([{"GPU": 1, "CPU": 0}]*gpus)
     ray.get(pg.ready())
 
     vllm_actor = ray.remote(

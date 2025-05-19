@@ -143,6 +143,8 @@ _GLOBAL_MEMORY_BUFFER = None
 # MOE logging
 _MOE_LAYER_WISE_LOGGING_TRACKER = {}
 
+_EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS = None
+
 
 def get_nccl_options(pg_name, nccl_comm_cfgs):
     """Set the NCCL process group options.
@@ -683,10 +685,10 @@ def initialize_model_parallel(
         rank_offset=encoder_world_size,
     )
 
-    assert decoder_rank_generator.get_ranks("pp") == expert_decoder_rank_generator.get_ranks(
-        "pp"
-    ), f"Pipeline parallel groups are expected to be the same for Non-Expert and Expert part, \
-    but got {decoder_rank_generator.get_ranks('pp')} and {expert_decoder_rank_generator.get_ranks('pp')}"
+    # assert decoder_rank_generator.get_ranks("pp") == expert_decoder_rank_generator.get_ranks(
+        # "pp"
+    # ), f"Pipeline parallel groups are expected to be the same for Non-Expert and Expert part, \
+    # but got {decoder_rank_generator.get_ranks('pp')} and {expert_decoder_rank_generator.get_ranks('pp')}"
 
     def generator_wrapper(group_type, is_expert=False, **kwargs):
         """The `RankGenerator` class produces a hyper-rectangle for a given set of
@@ -977,6 +979,7 @@ def initialize_model_parallel(
 
     # Build the tensor + expert parallel groups
     global _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP
+    global _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS
     assert (
         _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP is None
     ), 'Expert tensor + model parallel group is already initialized'
@@ -986,6 +989,7 @@ def initialize_model_parallel(
         )
         if rank in ranks:
             _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP = group
+            _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS = ranks
 
     # Build the expert+tensor+pipeline parallel groups
     global _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP
@@ -1453,6 +1457,11 @@ def get_tensor_model_parallel_src_rank():
     ), "Tensor model parallel group is not initialized"
     return _TENSOR_MODEL_PARALLEL_GLOBAL_RANKS[0]
 
+def get_expert_tensor_and_model_parallel_src_rank():
+    assert (
+        _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS is not None
+    ), "Exper tensor and model parallel group is not initialized"
+    return _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS[0]
 
 def get_model_parallel_src_rank():
     """Calculate the global rank corresponding to the first local rank

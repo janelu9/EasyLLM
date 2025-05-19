@@ -112,11 +112,7 @@ parser.add_argument('--tensor_parallel_size',
                     type=int,
                     default=1,
                     help='model parallel size')
-parser.add_argument('--expert_tensor_parallel_size',
-                    type=int,
-                    default=None,
-                    help='expert tensor parallel size')
-parser.add_argument('--expert_model_parallel_size',
+parser.add_argument('--expert_parallel_size',
                     type=int,
                     default=1,
                     help='expert model parallel size')
@@ -389,8 +385,8 @@ def main(args):
     
     args.global_rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
-    assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size) == 0
-    args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size)
+    assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size * args.expert_parallel_size) == 0
+    args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size * args.expert_parallel_size)
     assert args.data_parallel_size%args.sequence_parallel_size==0
     if args.gradient_accumulation_steps==0:
         args.gradient_accumulation_steps = args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size
@@ -451,7 +447,7 @@ def main(args):
             args.eval_data = cached_dir
         eval_data_partitions = sorted([os.path.join(args.eval_data,f) for f in os.listdir(args.eval_data) if os.path.isdir(os.path.join(args.eval_data,f))])
     
-    spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size,args.sequence_parallel_size)
+    spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size*args.expert_parallel_size,args.sequence_parallel_size)
     
     if args.rlhf:
         from jllm import rlhf
@@ -548,10 +544,8 @@ def main(args):
             partition_method = str(list(range(args.encoder_pipe_parallel_size+len(config.partition_method))))[1:-1]
     else:
         partition_method = str(config.partition_method)[1:-1]
-
-    torch.distributed.barrier()
-    
-    topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size])
+        
+    topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size*args.expert_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
     if args.tensor_parallel_size > 1:
@@ -560,8 +554,7 @@ def main(args):
         from jllm.core import parallel_state,tensor_parallel
         parallel_state.initialize_model_parallel(args.tensor_parallel_size,
                                                  args.pipe_parallel_size,
-                                                 expert_model_parallel_size=args.expert_model_parallel_size,
-                                                 expert_tensor_parallel_size=args.expert_tensor_parallel_size
+                                                 expert_model_parallel_size=args.expert_parallel_size,
                                                  )
         tensor_parallel.model_parallel_cuda_manual_seed(args.seed)
         from jllm.core.model_parallel_config import ModelParallelConfig
