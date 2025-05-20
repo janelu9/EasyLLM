@@ -24,7 +24,7 @@ def obs_copy(src,dst,recursive=False):
     cmd = ['./obsutil', 'cp', src, dst, '-f']
     if recursive:
         cmd.append('-r')
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 def obs_exists(path):
     cmd = ['./obsutil', 'stat', path]
@@ -35,7 +35,7 @@ def obs_rm(path, recursive=False):
     cmd = ['./obsutil', 'rm', path, '-f']
     if recursive:
         cmd.append('-r')
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 def obs_download(rank,world_size,pp,tp,model,only_model,data):
     
