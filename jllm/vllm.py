@@ -4,6 +4,19 @@ import ray
 from vllm import LLM
 from jllm.cat2hf import parallel_type
 
+if hasattr(torch,'npu'):
+    NPU=True
+    import subprocess
+    import torch_npu
+    from torch_npu.contrib import transfer_to_npu
+else:
+    NPU=False
+
+# def get_npu_uuid(index):
+    # cmd = ['npu-smi', 'info','-t','board','-i',str(index)]
+    # result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # return result.stdout.strip().split('\n\t')[4].split(' ')[-1]
+
 def stateless_init_process_group(master_address, master_port, rank, world_size, device):
     from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
     from vllm.distributed.utils import StatelessProcessGroup
@@ -19,7 +32,7 @@ class WorkerExtension:
     def report_device_id(self) -> str:
         from vllm.platforms import current_platform
         from vllm.distributed import parallel_state as mpu
-        self.device_uuid = current_platform.get_device_uuid(self.device.index)
+        self.device_uuid = str(self.device.index) if NPU else current_platform.get_device_uuid(self.device.index) 
         self.tp_size = mpu.get_tensor_model_parallel_world_size()
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_size = mpu.get_pp_group().world_size
@@ -132,26 +145,27 @@ def init_vllm(address,
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
     
     ray.init(address=address,ignore_reinit_error=True)
-    if hasattr(torch,'npu'):
-        pg = placement_group([{"NPU": 1, "CPU": 0}]*gpus)
+    if NPU:
+        extra_kwargs = {'resources':{"NPU": gpus}}
+        distributed_executor_backend = 'uni' if tensor_parallel_size==1 else 'mp'
     else:
         pg = placement_group([{"GPU": 1, "CPU": 0}]*gpus)
-    ray.get(pg.ready())
+        ray.get(pg.ready())
+        extra_kwargs = {}
+        distributed_executor_backend = 'uni' if tensor_parallel_size==1 else 'ray'
 
     vllm_actor = ray.remote(
         num_cpus=0,
         num_gpus=0,
-        scheduling_strategy=PlacementGroupSchedulingStrategy(
-            placement_group=pg,
-            placement_group_capture_child_tasks=True,
-        ),
+        scheduling_strategy=None if NPU else PlacementGroupSchedulingStrategy(placement_group=pg,placement_group_capture_child_tasks=True),
+        **extra_kwargs
     )(vLLM).options(name="llm",namespace="vllm", lifetime="detached").remote(
         model=model,
         enforce_eager=True,
         worker_extension_cls="jllm.vllm.WorkerExtension",
         tensor_parallel_size=tensor_parallel_size,
         pipeline_parallel_size=pipeline_parallel_size,
-        distributed_executor_backend="ray",
+        distributed_executor_backend=distributed_executor_backend,
         gpu_memory_utilization=gpu_memory_utilization,
         max_num_batched_tokens=max_num_batched_tokens,
         max_model_len=max_model_len,
@@ -205,13 +219,13 @@ if __name__=='__main__':
     ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
     try:
         actor=init_vllm(f"{ray_ip}:6380",
-                   args.model,
-                   gpu_memory_utilization=args.vllm_mem,
-                   tensor_parallel_size=args.vllm_tp,
-                   pipeline_parallel_size=args.vllm_pp,
-                   gpus=args.ray_gpus,
-                   max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.max_prefill_len,
-                   max_model_len =args.max_new_tokens+args.max_prefill_len)
+                        args.model,
+                        gpu_memory_utilization=args.vllm_mem,
+                        tensor_parallel_size=args.vllm_tp,
+                        pipeline_parallel_size=args.vllm_pp,
+                        gpus=args.ray_gpus,
+                        max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.max_prefill_len,
+                        max_model_len =args.max_new_tokens+args.max_prefill_len)
         import time
         while True:
             time.sleep(3600)
