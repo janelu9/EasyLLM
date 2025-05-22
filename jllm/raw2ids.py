@@ -167,6 +167,7 @@ def token_finetune(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = [
             
             for msg in msgs[start+1:]:
                 k,v = next(iter(msg.items()))
+                disable_thinking = True if k=='assistant' and v.startswith('<think>\n\n</think>') else False
                 if k != pre_k:
                     if k != "assistant":
                         ids.append(tokenizer.im_end_id)
@@ -174,7 +175,7 @@ def token_finetune(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = [
                             divide.append(len(ids))
                     ids.extend(ROLE[k])
                     if k == "assistant":
-                        divide.append(len(ids))
+                        divide.append((len(ids)+tokenizer.no_thinking_len) if disable_thinking else len(ids))
                     ids.extend(tokenizer.encode(v))         
                 else:
                     ids.extend(tokenizer.encode(v))
@@ -593,14 +594,18 @@ def qwen2_template(tokenizer,**kwargs):
     user_id = tokenizer.encode("user")
     assistant_id = tokenizer.encode("assistant")
     
+    tokenizer.no_thinking_len = len(tokenizer.encode('<think>\n\n</think>\n\n'))
+    
     ROLE = {
         'system': [tokenizer.im_start_id] + system_id + nl_token_id,
         'user': nl_token_id + [tokenizer.im_start_id] + user_id + nl_token_id,
         'assistant': [tokenizer.im_end_id] + nl_token_id + [tokenizer.im_start_id] + assistant_id + nl_token_id
     }
-    PREFIX = [{'system':'You are a helpful assistant.'}]
+
     if 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.' in tokenizer.chat_template:
         PREFIX = [{'system':'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'}]
+    elif 'You are a helpful assistant.' in tokenizer.chat_template:
+        PREFIX = [{'system':'You are a helpful assistant.'}]
     
     config = AutoConfig.from_pretrained(tokenizer.name_or_path)
     if hasattr(config,'vision_config'):

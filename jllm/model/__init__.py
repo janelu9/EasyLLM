@@ -24,7 +24,8 @@ ModelPipe = {
     'InternVLChatModel':InterenVL2ForCausalLMPipe,
     'InternLM2ForCausalLM':InternLM2ForCausalLMPipe,
     'Qwen2VLForConditionalGeneration':Qwen2VLForCausalLMPipe,
-    'Qwen2_5_VLForConditionalGeneration':Qwen2_5_VLForCausalLMPipe
+    'Qwen2_5_VLForConditionalGeneration':Qwen2_5_VLForCausalLMPipe,
+    'Qwen3ForCausalLM':Qwen2ForCausalLMPipe,
 }
     
 ModelParallel = {
@@ -33,6 +34,7 @@ ModelParallel = {
     'Qwen2VLForConditionalGeneration':Qwen2VLForCausalLMParallel,
     'Qwen2_5_VLForConditionalGeneration':Qwen2_5_VLForCausalLMParallel,
     'DeepseekV3ForCausalLM':DeepseekV3ForCausalLM,
+    'Qwen3ForCausalLM':Qwen2ForCausalLMParallel,
 }
 
 get_virtual_num_hidden_layers ={
