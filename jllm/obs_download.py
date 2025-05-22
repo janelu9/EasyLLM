@@ -9,7 +9,7 @@ import subprocess
 def obs_list_dir(path,recursive=False):
     if not path.endswith('/'):
         path += '/'
-    cmd = ['./obsutil', 'ls','-s', path,'-d']
+    cmd = ['obsutil', 'ls','-s', path,'-d']
     if recursive:
         cmd.pop()
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -21,18 +21,18 @@ def obs_list_dir(path,recursive=False):
     return file_list
     
 def obs_copy(src,dst,recursive=False):
-    cmd = ['./obsutil', 'cp', src, dst, '-f']
+    cmd = ['obsutil', 'cp', src, dst, '-f']
     if recursive:
         cmd.append('-r')
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 def obs_exists(path):
-    cmd = ['./obsutil', 'stat', path]
+    cmd = ['obsutil', 'stat', path]
     result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return result.returncode == 0
     
 def obs_rm(path, recursive=False):
-    cmd = ['./obsutil', 'rm', path, '-f']
+    cmd = ['obsutil', 'rm', path, '-f']
     if recursive:
         cmd.append('-r')
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)

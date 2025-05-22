@@ -130,7 +130,7 @@ class WorkerExtension:
 class vLLM(LLM):
     def __init__(self, *args, **kwargs):
         os.environ.pop("CUDA_VISIBLE_DEVICES", None)
-        os.environ.pop("ASCEND_RT_VISIBLE_DEVICES", None)
+        #os.environ.pop("ASCEND_RT_VISIBLE_DEVICES", None)
         super().__init__(*args, **kwargs)
         
 def init_vllm(address,
