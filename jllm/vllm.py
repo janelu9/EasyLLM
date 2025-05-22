@@ -6,7 +6,7 @@ from jllm.cat2hf import parallel_type
 
 if hasattr(torch,'npu'):
     NPU=True
-    import subprocess
+    #import subprocess
     import torch_npu
     from torch_npu.contrib import transfer_to_npu
 else:
@@ -146,19 +146,17 @@ def init_vllm(address,
     
     ray.init(address=address,ignore_reinit_error=True)
     if NPU:
-        extra_kwargs = {'resources':{"NPU": gpus}}
         distributed_executor_backend = 'uni' if tensor_parallel_size==1 else 'mp'
     else:
         pg = placement_group([{"GPU": 1, "CPU": 0}]*gpus)
         ray.get(pg.ready())
-        extra_kwargs = {}
         distributed_executor_backend = 'uni' if tensor_parallel_size==1 else 'ray'
 
     vllm_actor = ray.remote(
         num_cpus=0,
         num_gpus=0,
         scheduling_strategy=None if NPU else PlacementGroupSchedulingStrategy(placement_group=pg,placement_group_capture_child_tasks=True),
-        **extra_kwargs
+        resources= {"NPU" : gpus} if NPU else None
     )(vLLM).options(name="llm",namespace="vllm", lifetime="detached").remote(
         model=model,
         enforce_eager=True,

@@ -389,7 +389,7 @@ def main(args):
     args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size * args.expert_parallel_size)
     assert args.data_parallel_size%args.sequence_parallel_size==0
     if args.gradient_accumulation_steps==0:
-        args.gradient_accumulation_steps = args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size
+        args.gradient_accumulation_steps = max(args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size,1)
     else:
         args.global_batch_size = args.per_device_train_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
 
