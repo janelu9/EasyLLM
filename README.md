@@ -204,25 +204,25 @@ def reward_func(index,response):
 2. Start a vLLM cluster.
 
 ```shell
-CUDA_VISIBLE_DEVICES=6,7 ray start --head --port 6380
+CUDA_VISIBLE_DEVICES=7 ray start --head --port 6380
 python -m jllm.vllm --model Qwen2.5-7B-Instruct \
 	--max_prefill_len 128 \
     --num_generations 4 \
     --max_new_tokens 64 \
-    --vllm_tp 2 \
-    --ray_gpus 2 \
+    --vllm_tp 1 \
+    --ray_gpus 1 \
     --vllm_mem 0.8 
 ```
 
 3. Train:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 deepspeed --module jllm.train_pipe \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 deepspeed --module jllm.train_pipe \
     --model Qwen2.5-7B-Instruct \
     --num_train_epochs 2 \
     --train_data dataset0_Qwen2.5-7B-Instruct \
-    --pipe_parallel_size 3 \
-    --tensor_parallel_size 2 \
+    --pipe_parallel_size 7 \
+    --tensor_parallel_size 1 \
     --per_device_train_batch_size 1 \
     --global_batch_size 32 \
     --partition_method mem \
@@ -314,4 +314,4 @@ If you find EasyLLM useful or use EasyLLM's code  in your research, please cite 
 
 ## Acknowledgment
 
-This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed),  [Megatron-LM](https://github.com/NVIDIA/Megatron-LM.git) and [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git).
+This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed),  [Megatron-LM](https://github.com/NVIDIA/Megatron-LM.git), [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git), [vLLM](https://github.com/vllm-project/vllm).

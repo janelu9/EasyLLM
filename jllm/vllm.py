@@ -2,7 +2,9 @@ import os
 import torch
 import ray
 from vllm import LLM
+from datetime import timedelta
 from jllm.cat2hf import parallel_type
+from jllm.distributed_util import init_process_group
 
 if hasattr(torch,'npu'):
     NPU=True
@@ -16,16 +18,6 @@ else:
     # cmd = ['npu-smi', 'info','-t','board','-i',str(index)]
     # result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     # return result.stdout.strip().split('\n\t')[4].split(' ')[-1]
-
-def stateless_init_process_group(master_address, master_port, rank, world_size, device):
-    from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
-    from vllm.distributed.utils import StatelessProcessGroup
-    pg = StatelessProcessGroup.create(host=master_address,
-                                      port=master_port,
-                                      rank=rank,
-                                      world_size=world_size)
-    pynccl = PyNcclCommunicator(pg, device=device)
-    return pynccl
 
 class WorkerExtension:
 
@@ -50,20 +42,18 @@ class WorkerExtension:
         return -1
     
     def update_weight_by_cpu_handles(self, cpu_handles,tile=True):
-        if self.device_uuid in cpu_handles:
-            handles=cpu_handles[self.device_uuid]
-            weights =[]
-            for name, handle in handles:
-                func, args = handle
-                tensor = func(*args)
-                if self.tp_size>1 and tile:
-                    dim = parallel_type(name)
-                    if dim==0:
-                        tensor=tensor.tile(self.tp_size,1) if tensor.dim()==2 else tensor.tile(self.tp_size)
-                    elif dim==1:
-                        tensor=tensor.tile(1,self.tp_size) if tensor.dim()==2 else tensor.tile(self.tp_size)
-                weights.append((name, tensor))
-            self.model_runner.model.load_weights(weights=weights)
+        weights =[]
+        for name, handle in cpu_handles:
+            func, args = handle
+            tensor = func(*args)
+            if self.tp_size>1 and tile:
+                dim = parallel_type(name)
+                if dim==0:
+                    tensor=tensor.tile(self.tp_size,1) if tensor.dim()==2 else tensor.tile(self.tp_size)
+                elif dim==1:
+                    tensor=tensor.tile(1,self.tp_size) if tensor.dim()==2 else tensor.tile(self.tp_size)
+            weights.append((name, tensor))
+        self.model_runner.model.load_weights(weights=weights)
 
     def init_weight_update_group(self, 
                                  master_address,
@@ -78,12 +68,13 @@ class WorkerExtension:
         if rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
             if rank < pp_rank_of_global_rank_in_vllm or pp_rank_of_global_rank_in_vllm == -1:
                 rank += rank_offset
-            self.model_update_groups[global_rank] = stateless_init_process_group(
-                master_address,
-                master_port,
-                rank,
-                world_size,
-                self.device,
+            self.model_update_groups[global_rank] = init_process_group(
+                backend="hccl" if NPU else "nccl",
+                init_method=f"tcp://{master_address}:{master_port}",
+                world_size=world_size,
+                rank=rank,
+                timeout=timedelta(seconds=30),
+                group_name=f"pg_group_{master_address}_{master_port}"
             )
 
     def update_weight_by_nccl(self,
@@ -95,9 +86,7 @@ class WorkerExtension:
         from vllm.distributed.parallel_state import get_world_group
         if self.pp_rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
             weight = torch.empty(shape, dtype=dtype, device="cuda")
-            self.model_update_groups[global_rank].broadcast(weight,
-                                                            src=0,
-                                                            stream=torch.cuda.current_stream())
+            torch.distributed.broadcast(weight, src=0,group=self.model_update_groups[global_rank])  
             if self.tp_size>1 and tile:
                 dim = parallel_type(name)
                 if dim==0:
