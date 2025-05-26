@@ -139,7 +139,7 @@ def init_vllm(address,
     else:
         pg = placement_group([{"GPU": 1, "CPU": 0}]*gpus)
         ray.get(pg.ready())
-        distributed_executor_backend = 'uni' if tensor_parallel_size==1 else 'ray'
+        distributed_executor_backend = 'ray'
 
     vllm_actor = ray.remote(
         num_cpus=0,
