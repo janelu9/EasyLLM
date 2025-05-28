@@ -171,9 +171,6 @@ parser.add_argument('--seq_len',
                     type=int,
                     default=2048,
                     help='max seq len')
-parser.add_argument('--block_mask',
-                    action='store_true',
-                    help="use BlockDiagonalCausalMask")
 parser.add_argument('--skip_train_steps',
                     type=str,
                     default="",
@@ -265,6 +262,9 @@ parser.add_argument('--no_pin_memory',
 parser.add_argument('--init',
                     action='store_true',
                     help='train from 0')
+parser.add_argument('--block_mask',
+                    action='store_true',
+                    help="use BlockDiagonalCausalMask")
 parser.add_argument('--cache_model',
                     type=str,
                     default=None,
@@ -417,13 +417,16 @@ def main(args):
     
     num_train_batch=0
     seq_len=0
+    block_mask = 0
     for f in os.listdir(args.train_data):
         if f[-4:] == '.crc':
             with open(os.path.join(args.train_data,f))as crc:
                 info=crc.read().split()
             num_train_batch+=int(info[0])//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
             seq_len=max(seq_len,int(info[1]))
+            block_mask=max(block_mask,int(info[3]))
     num_field = int(info[-1])
+    args.block_mask=block_mask if args.block_mask else args.block_mask 
     args.seq_len=seq_len
     if args.force_4k:
         assert (seq_len-1)//4096>=1, 'force_4k requires seq_len>=4096.'

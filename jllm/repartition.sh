@@ -23,12 +23,13 @@ rm -rf $cur_partitions
 crc=`ls .*.crc`
 cat $crc | awk '{
     sum+=$1; 
-    if($2 > max || NR==1) max=$2; 
+    if($2 > max1 || NR==1) max1=$2; 
     last3=$3; 
-    last4=$4
+	if($4 > max2 || NR==1) max2=$4;  
+    last5=$5
 } 
 END {
-    print sum" "max" "last3" "last4
+    print sum" "max1" "last3" "max2" "last5
 }' >.$uuid.crc
 rm -f $crc
 echo -e "Data: $1\nPartitions: $num\nFiles: $i\nSamples: $(cat .$uuid.crc|awk '{print $1"*"$2}')\nUUID: $uuid\n\nSize\tPartition">data.info

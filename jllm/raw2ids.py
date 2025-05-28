@@ -80,17 +80,19 @@ def token_pretrain(file,tokenizer,MAX_SEQ_LENGTH,stack=True):
                 
             if l==MAX_SEQ_LENGTH: # all ids yielded, clear ids
                 ids = []   
-            elif l>=MAX_SEQ_LENGTH-3: # pad few then yield  
-                input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
-                cu_seqlens.append(l)
-                yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
-                cu_seqlens = [0]
-                ids = []
+            # elif l>=MAX_SEQ_LENGTH-3: # pad few then yield  
+                # input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
+                # cu_seqlens.append(l)
+                # if l!=MAX_SEQ_LENGTH-1:cu_seqlens.append(MAX_SEQ_LENGTH-1)
+                # yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
+                # cu_seqlens = [0]
+                # ids = []
             else: # join to next doc
                 ids=input_ids
  
         if 2<l<MAX_SEQ_LENGTH:
             cu_seqlens.append(l)
+            if l!=MAX_SEQ_LENGTH-1:cu_seqlens.append(MAX_SEQ_LENGTH-1)
             input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
             yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
     else:
@@ -240,11 +242,13 @@ def write_parquet(filename,
     if not os.path.exists(partition_dir):
         os.makedirs(partition_dir)
     max_seq_len = 0
+    max_blocks = 0
     if not auto_batch_size:
         pbar = tqdm.tqdm(float("inf"))
         data = next(item_iter)
         data_batch={k:[data[k]] for k in data}
         max_seq_len = max(max_seq_len,len(data['input_ids']))
+        max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
         i=0
         pbar.update(1)
         try:
@@ -253,6 +257,7 @@ def write_parquet(filename,
                     data = next(item_iter)
                     for k in data:data_batch[k].append(data[k])
                     max_seq_len = max(max_seq_len,len(data['input_ids']))
+                    max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
                     i+=1
                     pbar.update(1)
                     
@@ -266,6 +271,7 @@ def write_parquet(filename,
                 data = next(item_iter)
                 data_batch={k:[data[k]] for k in data}
                 max_seq_len = max(max_seq_len,len(data['input_ids']))
+                max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
                 i+=1
                 pbar.update(1)
                 
@@ -281,6 +287,7 @@ def write_parquet(filename,
         data = next(item_iter)
         data_batch={k:[data[k]] for k in data}
         max_seq_len = max(max_seq_len,len(data['input_ids']))
+        max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
         element_num = sum(data[k].size for k in data)
         i=0
         p=0
@@ -291,6 +298,7 @@ def write_parquet(filename,
             for k in data: 
                 data_batch[k].append(data[k])
                 max_seq_len = max(max_seq_len,len(data['input_ids']))
+                max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
                 element_num+=data[k].size 
             if element_num > NUM_ELEMENT_LIMIT:
                 pyarrow.parquet.write_table(pyarrow.table(data_batch),
@@ -308,7 +316,7 @@ def write_parquet(filename,
                                         compression=compression) 
 
     del data_batch                                
-    os.system(f"echo '{i+1} {max_seq_len} {batch_size} {len(data.keys())}' > {check_file}")
+    os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_blocks} {len(data.keys())}' > {check_file}")
     print(f"{filename} stored in parquet with {i+1} samples")
     gc.collect()
 
