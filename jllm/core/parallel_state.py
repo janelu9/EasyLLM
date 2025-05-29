@@ -145,6 +145,11 @@ _MOE_LAYER_WISE_LOGGING_TRACKER = {}
 
 _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS = None
 
+AUX_LOSS_ALPHA = 0.0
+
+def set_aux_loss_alpha(x):
+    global AUX_LOSS_ALPHA
+    AUX_LOSS_ALPHA = x
 
 def get_nccl_options(pg_name, nccl_comm_cfgs):
     """Set the NCCL process group options.

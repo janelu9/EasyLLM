@@ -269,6 +269,18 @@ parser.add_argument('--cache_model',
                     type=str,
                     default=None,
                     help='cached model dir')
+parser.add_argument("--aux_loss_step",
+                    type=float,
+                    default=0.0,
+                    help="moe aux loss step rat of train steps.")
+parser.add_argument("--aux_loss_alpha",
+                    type=float,
+                    default=0.2,
+                    help="moe aux loss alpha.")
+parser.add_argument("--aux_loss_backward_scale",
+                    type=float,
+                    default=1.0,
+                    help="aux loss backward scale.")
 # parser.add_argument('--pad',
                     # action='store_true',
                     # help='padding samples to max_len.')
@@ -491,6 +503,7 @@ def main(args):
     config.one_layerspec = not args.multi_layerspec
     config.max_num_images = args.max_num_images
     config.moe_layer_pipe_size=args.moe_layer_pipe_size
+    config.aux_loss_backward_scale=args.aux_loss_backward_scale
     config.gradient_accumulation_steps = args.gradient_accumulation_steps
     config.rlhf=args.rlhf
     config.num_generations = args.num_generations
@@ -567,6 +580,7 @@ def main(args):
                                               pipeline_dtype=config.torch_dtype,
                                               async_tensor_model_parallel_allreduce=args.async_tensor_model_parallel_allreduce
                                              )
+        parallel_state.set_aux_loss_alpha(args.aux_loss_alpha)
         parallel_config.batch_size = args.per_device_train_batch_size
         parallel_config.seq_length = config.seq_len
         parallel_config.max_num_patches = args.max_num_patches
@@ -631,6 +645,7 @@ def main(args):
     num_train_batch *=((seq_len-1)//4096 if args.force_4k else 1)
     num_update_steps_per_epoch = num_train_batch // args.gradient_accumulation_steps + len(train_data_partitions) - 1
     args.num_training_steps = int(args.num_train_epochs * num_update_steps_per_epoch)
+    args.aux_loss_step = int(args.num_training_steps*args.aux_loss_step if args.aux_loss_step<1 else args.aux_loss_step)
     if 'scheduler' not in ds_config:
         lr_scheduler = get_scheduler(
             name=args.lr_scheduler_type,
