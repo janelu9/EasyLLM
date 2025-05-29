@@ -11,7 +11,7 @@ import gc,os,tqdm
 import torch
 
 '''
-python -m jllm.hf2ds -p 43 -t 8 -e 1 -m unsloth/DeepSeek-R1 -o cached_model
+ python -m jllm.hf2ds -p 16 -t 8 -e 4 --partition_method 8,6 -m unsloth/DeepSeek-R1 -o cached_model
 '''
 
 def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
@@ -65,7 +65,6 @@ if __name__=='__main__':
                                                       num_expert_per_rank,
                                                       num_expert_per_group,
                                                       config.num_nextn_predict_layers)
-                                     
             state_dict={}
             source_dict={}
             local_hks = set()
