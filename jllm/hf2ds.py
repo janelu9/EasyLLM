@@ -43,6 +43,7 @@ if __name__=='__main__':
     args.seq_len=4096
     pipe_size=args.pipe_parallel_size
     tensor_size=args.tensor_parallel_size
+    tensor_expert_size = args.tensor_parallel_size*args.expert_parallel_size
     try:
         config = AutoConfig.from_pretrained(args.model,trust_remote_code=True)
     except:
@@ -52,11 +53,11 @@ if __name__=='__main__':
         weight_map = json.load(f)["weight_map"]
     layer_map = get_layer_map(config)
     num_expert_per_group = config.n_routed_experts//(config.moe_layer_pipe_size-1)
-    num_expert_per_rank = num_expert_per_group//args.tensor_parallel_size
+    num_expert_per_rank = num_expert_per_group//tensor_expert_size
     partitions = autopartition_transformer(config,args,deepseek_v3_get_num_hidden_layers(config))
     print(f'partitions:{partitions}')
     def hf2ds(p):
-        for te in range(args.tensor_parallel_size*args.expert_parallel_size):
+        for te in range(tensor_expert_size):
             pipe2hf=DeepseekV3ForCausalLM.get_pipe2hf(p,
                                                       te,
                                                       partitions,
@@ -73,8 +74,6 @@ if __name__=='__main__':
                     local_hks.update(hf_k)
                 else:
                     local_hks.add(hf_k)
-            # with open(os.path.join(args.output,f"tensor-{t + 1:02d}-of-{tensor_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" ),'w')as f:
-                # f.write('\n'.join(local_hks)+'\n')
             for part in tqdm.tqdm({weight_map[k] for k in local_hks}):
                 tmp = load_file(os.path.join(args.model,part))
                 for k in local_hks & tmp.keys():
@@ -82,7 +81,7 @@ if __name__=='__main__':
                 del tmp
                 gc.collect()
             get_weights_(pipe2hf,state_dict,source_dict,te%tensor_size,tensor_size)
-            model_file=os.path.join(args.output,f"tensor-{te + 1:02d}-of-{tensor_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" )
+            model_file=os.path.join(args.output,f"tensor-{te + 1:02d}-of-{tensor_expert_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" )
             save_file(state_dict,model_file)
             print(f'saved {model_file}')
         
