@@ -64,7 +64,7 @@ _EXPERT_MODEL_PARALLEL_GROUP = None
 # Expert tensor parallel group that current rank belongs to.
 _EXPERT_TENSOR_PARALLEL_GROUP = None
 # Expert tensor and model combined parallel group
-_EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP = None
+_TENSOR_AND_EXPERT_PARALLEL_GROUP = None
 # Expert tensor, model, pipeline combined parallel group
 _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP = None
 # Expert data parallel group
@@ -143,7 +143,7 @@ _GLOBAL_MEMORY_BUFFER = None
 # MOE logging
 _MOE_LAYER_WISE_LOGGING_TRACKER = {}
 
-_EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS = None
+_TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS = None
 
 AUX_LOSS_ALPHA = 0.0
 
@@ -896,7 +896,7 @@ def initialize_model_parallel(
     global _POSITION_EMBEDDING_GROUP
     global _POSITION_EMBEDDING_GLOBAL_RANKS
     assert _POSITION_EMBEDDING_GROUP is None, 'position embedding group is already initialized'
-    for ranks in generator_wrapper('pp'):
+    for ranks in generator_wrapper('pp',is_expert=True):
         group = torch.distributed.new_group(
             ranks, timeout=timeout, pg_options=get_nccl_options('pp', nccl_comm_cfgs)
         )
@@ -983,18 +983,18 @@ def initialize_model_parallel(
             _EXPERT_TENSOR_PARALLEL_GROUP = group
 
     # Build the tensor + expert parallel groups
-    global _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP
-    global _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS
+    global _TENSOR_AND_EXPERT_PARALLEL_GROUP
+    global _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS
     assert (
-        _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP is None
+        _TENSOR_AND_EXPERT_PARALLEL_GROUP is None
     ), 'Expert tensor + model parallel group is already initialized'
     for ranks in generator_wrapper('tp-ep', is_expert=True):
         group = torch.distributed.new_group(
             ranks, timeout=timeout, pg_options=get_nccl_options('tp_exp', nccl_comm_cfgs)
         )
         if rank in ranks:
-            _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP = group
-            _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS = ranks
+            _TENSOR_AND_EXPERT_PARALLEL_GROUP = group
+            _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS = ranks
 
     # Build the expert+tensor+pipeline parallel groups
     global _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP
@@ -1462,11 +1462,11 @@ def get_tensor_model_parallel_src_rank():
     ), "Tensor model parallel group is not initialized"
     return _TENSOR_MODEL_PARALLEL_GLOBAL_RANKS[0]
 
-def get_expert_tensor_and_model_parallel_src_rank():
+def get_tensor_and_expert_parallel_src_rank():
     assert (
-        _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS is not None
+        _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS is not None
     ), "Exper tensor and model parallel group is not initialized"
-    return _EXPERT_TENSOR_AND_MODEL_PARALLEL_GLOBAL_RANKS[0]
+    return _TENSOR_AND_EXPERT_PARALLEL_GLOBAL_RANKS[0]
 
 def get_model_parallel_src_rank():
     """Calculate the global rank corresponding to the first local rank
@@ -1700,30 +1700,30 @@ def set_expert_tensor_parallel_rank(rank):
     _MPU_EXPERT_TENSOR_PARALLEL_RANK = rank
 
 
-def get_expert_tensor_and_model_parallel_group(check_initialized=True):
+def get_tensor_and_expert_parallel_group(check_initialized=True):
     """Get the expert-tensor and expert-model group the caller rank belongs to."""
     if check_initialized:
         assert (
-            _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP is not None
+            _TENSOR_AND_EXPERT_PARALLEL_GROUP is not None
         ), 'Expert tensor and model parallel group is not initialized'
-    return _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP
+    return _TENSOR_AND_EXPERT_PARALLEL_GROUP
 
 
-def get_expert_tensor_and_model_parallel_world_size():
+def get_tensor_and_expert_parallel_world_size():
     """Return world size for the expert model parallel group times expert tensor parallel group."""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         world_size = torch.distributed.get_world_size(
-            group=get_expert_tensor_and_model_parallel_group()
+            group=get_tensor_and_expert_parallel_group()
         )
         return world_size
     else:
         return 0
 
 
-def get_expert_tensor_and_model_parallel_rank():
+def get_tensor_and_expert_parallel_rank():
     """Return caller's rank in the joint tensor- and expert-model-parallel group."""
     if torch.distributed.is_available() and torch.distributed.is_initialized():
-        return torch.distributed.get_rank(group=get_expert_tensor_and_model_parallel_group())
+        return torch.distributed.get_rank(group=get_tensor_and_expert_parallel_group())
     else:
         return 0
 
@@ -1910,8 +1910,8 @@ def destroy_model_parallel():
     global _MPU_EXPERT_TENSOR_PARALLEL_RANK
     _MPU_EXPERT_TENSOR_PARALLEL_RANK = None
 
-    global _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP
-    _EXPERT_TENSOR_AND_MODEL_PARALLEL_GROUP = None
+    global _TENSOR_AND_EXPERT_PARALLEL_GROUP
+    _TENSOR_AND_EXPERT_PARALLEL_GROUP = None
 
     global _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP
     _EXPERT_TENSOR_MODEL_PIPELINE_PARALLEL_GROUP = None

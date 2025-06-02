@@ -4,9 +4,10 @@
 # repo: https://github.com/pytorch/pytorch
 
 import contextlib
-import logging
+from importlib.metadata import version
 
 import torch
+from pkg_resources import packaging
 from torch import _C
 from torch.cuda import _lazy_call
 from torch.cuda import device as device_ctx_manager
@@ -14,14 +15,12 @@ from torch.utils.checkpoint import detach_variable
 
 from jllm.core.parallel_state import (
     get_data_parallel_rank,
-    get_expert_tensor_parallel_rank,
     get_expert_model_parallel_rank,
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
 
-from packaging.version import Version as PkgVersion
 from .utils import gather_split_1d_tensor, split_tensor_into_1d_equal_chunks
 
 # Default name for the model parallel rng tracker.
@@ -144,15 +143,10 @@ class CudaRNGStatesTracker:
         orig_cuda_rng_state = torch.cuda.get_rng_state()
         # Set rng state to the desired one
         _set_cuda_rng_state(self.states_[name])
-        # Record cpu RNG state
-        cpu_rng_state = torch.get_rng_state()
         # Do the stuff we wanted to do.
         try:
             yield
         finally:
-            # Throw a warning if cpu RNG state changed
-            if not torch.all(cpu_rng_state == torch.get_rng_state()).item():
-                logging.getLogger(__name__).warning('CPU RNG state changed within GPU RNG context')
             # Update the current rng state for later use.
             self.states_[name] = torch.cuda.get_rng_state()
             # And set the state to the original state we started with.
@@ -163,32 +157,9 @@ class CudaRNGStatesTracker:
 _CUDA_RNG_STATE_TRACKER = None
 _CUDA_RNG_STATE_TRACKER_INITIALIZED = False
 
-def get_te_version():
-    """Get TE version from __version__; if not available use pip's. Use caching."""
-
-    def get_te_version_str():
-        import transformer_engine as te
-
-        if hasattr(te, '__version__'):
-            return str(te.__version__)
-        else:
-            return version("transformer-engine")
-
-    global _te_version
-    if _te_version is None:
-        _te_version = PkgVersion(get_te_version_str())
-    return _te_version
-
-
-def is_te_min_version(version, check_equality=True):
-    """Check if minimum version of `transformer-engine` is installed."""
-    if check_equality:
-        return get_te_version() >= PkgVersion(version)
-    return get_te_version() > PkgVersion(version)
-
 def assert_viewless_tensor(tensor, extra_msg=None):
-    """Assert that a tensor is not a view (i.e., its '._base' field is
-    not set)."""
+    '''Assert that a tensor is not a view (i.e., its '._base' field is
+    not set).'''
     if isinstance(tensor, list):
         [assert_viewless_tensor(t) for t in tensor]
         return tensor
@@ -197,17 +168,17 @@ def assert_viewless_tensor(tensor, extra_msg=None):
     assert tensor._base is None, (
         "Ensure tensor._base is None before setting tensor.data or storing "
         "tensor to memory buffer. Otherwise, a memory leak will occur (and "
-        f"likely accumulate over iterations). {extra_msg}"
-    )
+        "likely accumulate over iterations). %s"
+    ) % extra_msg
     return tensor
 
 
 def safely_set_viewless_tensor_data(tensor, new_data_tensor):
-    """Safely set tensor's '.data' field.
+    '''Safely set tensor's '.data' field.
 
     Check first that the tensor is viewless (i.e., '._base' not set). If not,
     raise an exception.
-    """
+    '''
     assert_viewless_tensor(
         tensor,
         extra_msg="FYI, tensor._base has shape %s, and new_data_tensor has shape %s."
@@ -215,31 +186,31 @@ def safely_set_viewless_tensor_data(tensor, new_data_tensor):
     )
     tensor.data = new_data_tensor
 
-def initialize_rng_tracker(use_te_rng_tracker: bool = False):
-    """Create the RNG tracker. 'use_te_rng_tracker' determines whether to use
-    Megatron or TransformerEngine's implementation.
-    In particular, TransformerEngine's implementation is cudagraphable and supports FP8.
-    """
 
+def initialize_rng_tracker(use_te_rng_tracker: bool = False):
     global _CUDA_RNG_STATE_TRACKER
     global _CUDA_RNG_STATE_TRACKER_INITIALIZED
     if _CUDA_RNG_STATE_TRACKER_INITIALIZED:
         return
-
     if use_te_rng_tracker:
-        if not is_te_min_version("1.5.0"):
-            raise RuntimeError("use_te_rng_tracker requires TransformerEngine version >= 1.5")
-        from megatron.core.extensions.transformer_engine import TECudaRNGStatesTracker
+        try:
+            import transformer_engine.pytorch as te
 
-        _CUDA_RNG_STATE_TRACKER = TECudaRNGStatesTracker()
+            _te_version = packaging.version.Version(version("transformer-engine"))
+            if _te_version < packaging.version.Version("1.5.0"):
+                raise RuntimeError("use_te_rng_tracker requires TransformerEngine version >= 1.5")
+        except:
+            raise RuntimeError("use_te_rng_tracker requires TransformerEngine, but not installed")
+    if use_te_rng_tracker:
+        _CUDA_RNG_STATE_TRACKER = te.distributed.CudaRNGStatesTracker()
     else:
         _CUDA_RNG_STATE_TRACKER = CudaRNGStatesTracker()
     _CUDA_RNG_STATE_TRACKER_INITIALIZED = True
 
 
-def get_cuda_rng_tracker(use_te_rng_tracker=False):
+def get_cuda_rng_tracker():
     """Get cuda rng tracker."""
-    initialize_rng_tracker(use_te_rng_tracker)
+    initialize_rng_tracker()
     return _CUDA_RNG_STATE_TRACKER
 
 
@@ -250,16 +221,9 @@ def model_parallel_cuda_manual_seed(seed):
     initialized. Also, no torch.cuda.manual_seed should be called
     after this function. Basically, this is replacement for that
     function.
-    Three set of RNG states are tracked:
-    default state: This is for data parallelism and is the same among a set of model parallel GPUs
-    but different across different model parallel groups. This is used for example for dropout
-    in the non-tensor-model-parallel regions.
-    tensor-model-parallel state: This state is different among a set of model parallel GPUs,
-    but the same across data parallel groups. This is used for example for dropout
-    in model parallel regions.
-    expert-parallel-seed: This state is only used for the expert layer of MoE models.
-    It is different among expert-tensor and expert-model parallel GPUs, and the same
-    across expert-data parallel groups.
+    Two set of RNG states are tracked:
+    default state: This is for data parallelism and is the same among a set of model parallel GPUs but different across different model paralle groups. This is used for example for dropout in the non-tensor-model-parallel regions.
+    tensor-model-parallel state: This state is different among a set of model parallel GPUs, but the same across data parallel groups. This is used for example for dropout in model parallel regions.
     """
     # 2718 is just for fun and any POSITIVE value will work.
     offset = seed + 2718
@@ -277,13 +241,13 @@ def model_parallel_cuda_manual_seed(seed):
     _CUDA_RNG_STATE_TRACKER.add(_MODEL_PARALLEL_RNG_TRACKER_NAME, tensor_model_parallel_seed)
 
     expert_parallel_seed = (
-        seed + 1024 + 100 * get_expert_model_parallel_rank() + get_expert_tensor_parallel_rank()
+        seed + 1024 + 100 * get_expert_model_parallel_rank() + get_tensor_model_parallel_rank()
     )
     _CUDA_RNG_STATE_TRACKER.add(_EXPERT_PARALLEL_RNG_TRACKER_NAME, expert_parallel_seed)
 
 
 class CheckpointFunction(torch.autograd.Function):
-    """Checkpoint Function
+    """Checkpoint Function 
 
     This function is adapted from torch.utils.checkpoint with two main changes:
     1) torch.cuda.set_rng_state is replaced with `_set_cuda_rng_state`

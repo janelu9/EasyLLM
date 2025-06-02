@@ -141,11 +141,11 @@ parser.add_argument('--per_device_train_batch_size',
                     help='per device train batch_size')
 parser.add_argument('--global_batch_size',
                     type=int,
-                    default=1,
+                    default=None,
                     help='global batch size')
 parser.add_argument('--gradient_accumulation_steps',
                     type=int,
-                    default=0,
+                    default=1,
                     help='gradient accumulation steps')
 parser.add_argument("--weight_decay",
                     type=float,
@@ -275,7 +275,7 @@ parser.add_argument("--aux_loss_step",
                     help="moe aux loss step rat of train steps.")
 parser.add_argument("--aux_loss_alpha",
                     type=float,
-                    default=0.2,
+                    default=0.0,
                     help="moe aux loss alpha.")
 parser.add_argument("--aux_loss_backward_scale",
                     type=float,
@@ -400,10 +400,10 @@ def main(args):
     assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size * args.expert_parallel_size) == 0
     args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size * args.expert_parallel_size)
     assert args.data_parallel_size%args.sequence_parallel_size==0
-    if args.gradient_accumulation_steps==0:
+    
+    if args.global_batch_size is not None:
         args.gradient_accumulation_steps = max(args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size,1)
-    else:
-        args.global_batch_size = args.per_device_train_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
+    args.global_batch_size = args.per_device_train_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
 
     train_ds_config = get_train_ds_config
     if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
