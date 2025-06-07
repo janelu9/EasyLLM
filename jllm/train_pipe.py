@@ -281,9 +281,9 @@ parser.add_argument("--aux_loss_backward_scale",
                     type=float,
                     default=1.0,
                     help="aux loss backward scale.")
-# parser.add_argument('--pad',
+# parser.add_argument('--sequence_parallel',
                     # action='store_true',
-                    # help='padding samples to max_len.')
+                    # help='if enable sequence parallel.')
 # parser.add_argument('--static_vseqlen',
                     # action='store_true',
                     # help='pad the vlm sequences')
@@ -397,8 +397,8 @@ def main(args):
     
     args.global_rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
-    assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size * args.expert_parallel_size) == 0
-    args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size * args.expert_parallel_size)
+    assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size) == 0
+    args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size)
     assert args.data_parallel_size%args.sequence_parallel_size==0
     
     if args.global_batch_size is not None:
@@ -462,7 +462,7 @@ def main(args):
             args.eval_data = cached_dir
         eval_data_partitions = sorted([os.path.join(args.eval_data,f) for f in os.listdir(args.eval_data) if os.path.isdir(os.path.join(args.eval_data,f))])
     
-    spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size*args.expert_parallel_size,args.sequence_parallel_size)
+    spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size,args.sequence_parallel_size)
     
     if args.rlhf:
         from jllm import rlhf
@@ -561,17 +561,24 @@ def main(args):
     else:
         partition_method = str(config.partition_method)[1:-1]
         
-    topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size*args.expert_parallel_size])
+    if args.expert_parallel_size==1:
+        topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size])
+    else:
+        topo = ProcessTopology(['pipe','data','model'], [args.pipe_parallel_size, args.data_parallel_size, args.tensor_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
-    if args.tensor_parallel_size > 1:
+    if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2:
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
-        parallel_state.initialize_model_parallel(args.tensor_parallel_size,
-                                                 args.pipe_parallel_size,
-                                                 expert_model_parallel_size=args.expert_parallel_size,
-                                                 )
+        if args.expert_parallel_size==1:
+            parallel_state.initialize_model_parallel(args.tensor_parallel_size,
+                                                     args.pipe_parallel_size,
+                                                     order='tp-pp-dp')
+        else:
+            parallel_state.initialize_model_parallel(args.tensor_parallel_size,
+                                                     args.pipe_parallel_size,
+                                                     expert_model_parallel_size=args.expert_parallel_size)
         tensor_parallel.model_parallel_cuda_manual_seed(args.seed)
         from jllm.core.model_parallel_config import ModelParallelConfig
         parallel_config = ModelParallelConfig(tensor_model_parallel_size=args.tensor_parallel_size,
@@ -585,6 +592,7 @@ def main(args):
         parallel_config.seq_length = config.seq_len
         parallel_config.max_num_patches = args.max_num_patches
         parallel_config.padding_rate = args.padding_rate
+        # parallel_config.sequence_parallel = args.sequence_parallel
         from jllm.model import ModelParallel
         with deepspeed.zero.Init(data_parallel_group=parallel_state.get_data_parallel_group(),
                          config_dict_or_path=ds_config,
@@ -633,6 +641,9 @@ def main(args):
                 
     if "optimizer" not in ds_config:
         optimizer_grouped_parameters = get_param_groups(model)
+        if args.expert_parallel_size>1:
+            from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
+            optimizer_grouped_parameters = split_params_into_different_moe_groups_for_optimizer(optimizer_grouped_parameters)
         optimizer = FusedAdam(optimizer_grouped_parameters,
                                   lr=args.learning_rate, weight_decay=args.weight_decay,
                                   betas=(0.9, 0.95))
@@ -735,6 +746,42 @@ def check_ckpt_list(self):
         # assert len(self.ckpt_list) == sd[
             # 'mp_world_size'], f"checkpoint count {len(self.ckpt_list)} is different from saved mp_world_size {sd['mp_world_size']}"
 SDLoaderBase.check_ckpt_list = check_ckpt_list
+
+from deepspeed.moe import layer
+from deepspeed.runtime import engine,utils
+from deepspeed.moe import utils 
+from deepspeed.profiling import flops_profiler 
+from jllm.model.deepseek_v3.parallel_deepseek_v3 import DeepseekV3MoE
+
+layer.MoE=DeepseekV3MoE
+engine.MoE=DeepseekV3MoE
+utils.MoE=DeepseekV3MoE
+flops_profiler.MoE=DeepseekV3MoE
+
+def get_norm_with_moe_layers(non_expert_norm, mpu, expert_tensors, norm_type=2):
+    def to_tensor(v):
+        return get_accelerator().FloatTensor([float(v)]).detach()
+    group_norms = [non_expert_norm]
+    for exp_name, tensors in expert_tensors.items():
+        group_norm = get_global_norm_of_tensors(input_tensors=tensors,
+                                                mpu=mpu,
+                                                norm_type=norm_type,
+                                                use_graph=False,
+                                                moe_ep_group=groups._get_expert_parallel_group(exp_name))
+        group_norms.append(group_norm)
+    group_norms = torch.stack([to_tensor(norm) for norm in group_norms])
+    if group_norms.eq(-1).any():
+        return -1
+    if norm_type == inf:
+        total_norm = group_norms.max().item()
+    else:
+        total_norm = group_norms.pow(norm_type).sum()
+        total_norm = total_norm.item()**(1. / norm_type)
+        if total_norm == float('inf') or total_norm == -float('inf'):
+            total_norm = -1
+    return total_norm
+    
+utils.get_norm_with_moe_layers=get_norm_with_moe_layers
 
 if __name__ == "__main__":
     main(args)
