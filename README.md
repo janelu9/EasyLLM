@@ -12,7 +12,7 @@ Training Large Language Model faster, easily and low-cost.
 
 ✦ Minimalist implementation of Sequence Parallelism (4D Parallelism for extra long context).
 
-✦ High performance of RLHF.
+✦ High performance of  Visual Language Model, Mixture of Experts and Reinforcement Learning.
 
 ## Installation
 
