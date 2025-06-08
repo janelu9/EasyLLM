@@ -1,7 +1,7 @@
 def parallel_type(k):
-    if  "o_proj.weight" in k or "down_proj.weight" in k or 'attn.proj.weight' in k or 'mlp.fc2.weight' in k or 'mlp.2.weight' in k :
+    if  "o_proj.weight" in k or ("down_proj.weight" in k and 'shared_experts' not in k) or 'attn.proj.weight' in k or 'mlp.fc2.weight' in k or 'mlp.2.weight' in k :
         return 1
-    if "lm_head" in k or "gate_proj" in k or "up_proj" in k or "embed_tokens" in k or "q_proj" in k \
+    if "lm_head" in k or ("gate_proj" in k and 'shared_experts' not in k) or ("up_proj" in k and 'shared_experts' not in k) or "embed_tokens" in k or "q_proj" in k \
     or "k_proj" in k or "v_proj" in k or 'attn.qkv' in k or 'mlp.fc1' in k or 'mlp.0' in k \
     or 'q_b_proj' in k or 'kv_b_proj' in k:
         return 0
@@ -30,16 +30,16 @@ if __name__=='__main__':
     files = os.listdir(ckpt_path)
     
     files = [f for f in files if f.endswith('safetensors')]
-    meta_datas = [f for f in files if f.split('-')[1] == '01']
-    num_stages = len(meta_datas)
+    files.sort()
+    num_stages = int(files[0][:-12].rsplit('-',1)[1])
     
-    def func(meta_data):
+    def func(pipe_rank):
         
-        pipe_rank = int(meta_data.rsplit('-',3)[1])
-        pts = [(int(f.split('-')[1]),load_file(os.path.join(ckpt_path,f))) for f in files if int(f.rsplit('-',3)[1])==pipe_rank]
-        pts.sort(key = lambda x:x[0])
+        pts = [load_file(os.path.join(ckpt_path,f)) for f in files if int(f.rsplit('-',3)[1])==pipe_rank]
+        moe = {k:p.pop(k) for p in pts for k in set(p.keys()) if '.experts.' in k}
+        pts = [p for p in pts if p]
         
-        keys = list(pts[0][1].keys())
+        keys = set(pts[0].keys())
         state_dict ={}
         
         index = {"metadata":{"total_size":0},"weight_map":{}}
@@ -48,9 +48,13 @@ if __name__=='__main__':
         for k in tqdm.tqdm(keys):
             dim = parallel_type(k)
             if dim >=0:
-                state_dict[k] = torch.cat([p[1].pop(k) for p in pts],dim)
+                state_dict[k] = torch.cat([p.pop(k) for p in pts],dim)
             else:
-                state_dict[k] = pts[0][1].pop(k)
+                state_dict[k] = pts[0].pop(k)
+            index["metadata"]["total_size"] +=state_dict[k].nbytes
+            index["weight_map"].update({k:model_file})
+        for k in set(moe.keys()):
+            state_dict[k] = moe.pop(k)
             index["metadata"]["total_size"] +=state_dict[k].nbytes
             index["weight_map"].update({k:model_file})
         del pts
@@ -59,7 +63,7 @@ if __name__=='__main__':
         return index
 
     with ProcessPoolExecutor(max_workers=min(num_stages,32)) as exe:
-        res = list(exe.map(func,meta_datas))
+        res = list(exe.map(func,list(range(1,num_stages+1))))
         
     if num_stages>1:
         index = {"metadata":{"total_size":0},"weight_map":{}}

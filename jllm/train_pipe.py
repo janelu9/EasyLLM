@@ -29,6 +29,7 @@ from .trainer import train
 from .ds_config import get_train_ds_config
 from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 from deepspeed.runtime.pipe import ProcessTopology
+import jllm.deepspeed_patch
 from functools import partial
 import pyarrow.parquet
 import numpy as np
@@ -674,114 +675,6 @@ def main(args):
     engine.set_train_batch_size(engine.train_batch_size()*args.sequence_parallel_size)
     
     train(args,engine,train_data_partitions,eval_data_partitions if args.eval_data else None)
-
-from deepspeed.runtime.pipe.module import PipelineModule,logger,ds_utils,LayerSpec,nn
-def custom_partition_layers(self, method='uniform'):
-    num_stages = self._topo.get_dim('pipe')
-    stage_id = self._topo.get_coord(self.global_rank).pipe
-
-    if self.global_rank == 0:
-        logger.info(f'Partitioning pipeline stages with method {method}')
-
-    method = method.lower()
-
-    # Each stage gets a simple uniform number of layers.
-    if method == 'uniform':
-        num_layers = len(self._layer_specs)
-        self.parts = ds_utils.partition_uniform(num_items=num_layers, num_parts=num_stages)
-    elif method == 'parameters':
-        param_counts = self._count_layer_params()
-        self.parts = ds_utils.partition_balanced(weights=param_counts, num_parts=num_stages)
-    elif method.startswith('type:'):
-        layertype = method.split(':')[1]
-        binary_weights = [0] * len(self._layer_specs)
-        for idx in self._find_layer_type(layertype):
-            binary_weights[idx] = 1
-        self.parts = ds_utils.partition_balanced(weights=binary_weights, num_parts=num_stages)
-    elif method == 'profile':
-        raise NotImplementedError(f'Partitioning method {method} not implemented.')
-    elif ',' in method:
-        self.parts = list(map(int,method.split(',')))
-    else:
-        raise NotImplementedError(f'Partitioning method {method} not implemented.')
-
-    # Print some information on the partitioning.
-    if self.global_rank == 0:
-        for stage in range(num_stages):
-            start = self.parts[stage]
-            stop = self.parts[stage + 1]
-            print(f'stage={stage} layers={stop - start}')
-            for idx, layer in enumerate(self._layer_specs[start:stop]):
-                name = str(layer)
-                num_layers = ''
-                if isinstance(layer, LayerSpec):
-                    name = layer.typename.__name__
-                    num_layers = layer.module_kwargs.get('num_layers','')
-                if isinstance(layer, nn.Module):
-                    name = layer.__class__.__name__
-                else:
-                    try:
-                        name = layer.__name__
-                    except AttributeError:
-                        pass
-                print(f'    {idx+start:2d}: {name} {num_layers}')
-        if self.loss_fn:
-            try:
-                print(f'  loss: {self.loss_fn.__name__}')
-            except AttributeError:
-                print(f'  loss: {self.loss_fn.__class__.__name__}')
-
-    self._set_bounds(start=self.parts[stage_id], stop=self.parts[stage_id + 1])
-PipelineModule._partition_layers = custom_partition_layers
-
-from deepspeed.runtime.state_dict_factory import SDLoaderBase
-def check_ckpt_list(self):
-    #logger.info(f'checkpoint file list: {self.ckpt_list}')
-    assert len(self.ckpt_list) > 0
-
-    sd = self.checkpoint_engine.load(self.ckpt_list[0], map_location=lambda storage, loc: storage)
-
-    # check checkpoint count is same with saved mp_world_size
-    # if 'mp_world_size' in sd.keys():
-        # assert len(self.ckpt_list) == sd[
-            # 'mp_world_size'], f"checkpoint count {len(self.ckpt_list)} is different from saved mp_world_size {sd['mp_world_size']}"
-SDLoaderBase.check_ckpt_list = check_ckpt_list
-
-from deepspeed.moe import layer
-from deepspeed.runtime import engine,utils
-from deepspeed.moe import utils 
-from deepspeed.profiling import flops_profiler 
-from jllm.model.deepseek_v3.parallel_deepseek_v3 import DeepseekV3MoE
-
-layer.MoE=DeepseekV3MoE
-engine.MoE=DeepseekV3MoE
-utils.MoE=DeepseekV3MoE
-flops_profiler.MoE=DeepseekV3MoE
-
-def get_norm_with_moe_layers(non_expert_norm, mpu, expert_tensors, norm_type=2):
-    def to_tensor(v):
-        return get_accelerator().FloatTensor([float(v)]).detach()
-    group_norms = [non_expert_norm]
-    for exp_name, tensors in expert_tensors.items():
-        group_norm = get_global_norm_of_tensors(input_tensors=tensors,
-                                                mpu=mpu,
-                                                norm_type=norm_type,
-                                                use_graph=False,
-                                                moe_ep_group=groups._get_expert_parallel_group(exp_name))
-        group_norms.append(group_norm)
-    group_norms = torch.stack([to_tensor(norm) for norm in group_norms])
-    if group_norms.eq(-1).any():
-        return -1
-    if norm_type == inf:
-        total_norm = group_norms.max().item()
-    else:
-        total_norm = group_norms.pow(norm_type).sum()
-        total_norm = total_norm.item()**(1. / norm_type)
-        if total_norm == float('inf') or total_norm == -float('inf'):
-            total_norm = -1
-    return total_norm
-    
-utils.get_norm_with_moe_layers=get_norm_with_moe_layers
 
 if __name__ == "__main__":
     main(args)

@@ -17,17 +17,16 @@ import torch
 def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
     for pk,hk in pipe2hf.items():
         if hk in tmp:
-            if 'post_attention_layernorm' not in hk:
-                tensor = tmp.pop(hk)
-                if "embed_tokens" in hk or "lm_head" in hk or 'q_b_proj' in hk or 'kv_b_proj' in hk:
-                    tensor = tensor.chunk(tensor_size,0)[tensor_rank].contiguous()
-                elif "o_proj" in hk or "mlp.down_proj" in hk:
-                    tensor = tensor.chunk(tensor_size,1)[tensor_rank].contiguous()
-                state_dict[pk] = tensor
-            else:
-                state_dict[pk] = tmp[hk].clone()
+            tensor = tmp.pop(hk)
+            if "embed_tokens" in hk or "lm_head" in hk or 'q_b_proj' in hk or 'kv_b_proj' in hk:
+                tensor = tensor.chunk(tensor_size,0)[tensor_rank].contiguous()
+            elif "o_proj" in hk or "mlp.down_proj" in hk:
+                tensor = tensor.chunk(tensor_size,1)[tensor_rank].contiguous()
+            state_dict[pk] = tensor
         elif "gate_up_proj" in pk and hk[0] in tmp:
             state_dict[pk] = torch.cat([tmp.pop(k).chunk(tensor_size,0)[tensor_rank] for k in hk],0).contiguous()
+        elif "moe.experts" in pk and hk[0] in tmp:
+            state_dict[pk] = torch.stack([tmp.pop(k).T for k in hk]).contiguous()
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
@@ -39,10 +38,11 @@ if __name__=='__main__':
     parser.add_argument('-m','--model', type=str,help='model obs path')
     parser.add_argument('-o','--output', type=str,help='output')
     args = parser.parse_args()
-
+    os.makedirs(args.output,exist_ok=True)
     args.seq_len=4096
     pipe_size=args.pipe_parallel_size
     tensor_size=args.tensor_parallel_size
+    expert_size=args.expert_parallel_size
     tensor_expert_size = args.tensor_parallel_size*args.expert_parallel_size
     try:
         config = AutoConfig.from_pretrained(args.model,trust_remote_code=True)
@@ -65,22 +65,28 @@ if __name__=='__main__':
                                                       num_expert_per_rank,
                                                       num_expert_per_group,
                                                       config.num_nextn_predict_layers)
+            e=te//tensor_size
             state_dict={}
             source_dict={}
             local_hks = set()
             for hf_k in pipe2hf.values():
-                if isinstance(hf_k,tuple):
-                    local_hks.update(hf_k)
+                if e==0:
+                    if isinstance(hf_k,tuple):
+                        local_hks.update(hf_k)
+                    else:
+                        local_hks.add(hf_k)
                 else:
-                    local_hks.add(hf_k)
+                    if isinstance(hf_k,tuple) and 'mlp.experts' in hf_k[0]:
+                        local_hks.update(hf_k)
             for part in tqdm.tqdm({weight_map[k] for k in local_hks}):
                 tmp = load_file(os.path.join(args.model,part))
                 for k in local_hks & tmp.keys():
                     source_dict[k] = tmp.pop(k)
                 del tmp
                 gc.collect()
-            get_weights_(pipe2hf,state_dict,source_dict,te%tensor_size,tensor_size)
-            model_file=os.path.join(args.output,f"tensor-{te + 1:02d}-of-{tensor_expert_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" )
+            t=te%tensor_size
+            get_weights_(pipe2hf,state_dict,source_dict,t,tensor_size)
+            model_file=os.path.join(args.output,f"tensor-{t+1:02d}-of-{tensor_size:02d}-expert-{e+1:02d}-of-{expert_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" )
             save_file(state_dict,model_file)
             print(f'saved {model_file}')
         
