@@ -37,36 +37,56 @@ def obs_rm(path, recursive=False):
         cmd.append('-r')
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-def obs_download(rank,world_size,pp,tp,model,only_model,data):
-    
-    topo=np.arange(world_size).reshape(-1,pp,tp)
-    dr,pr,tr=np.where(topo==rank)
+def obs_download(rank,world_size,args):
+    pp,ep,tp,model,only_model,data=args.pp,args.ep,args.tp,args.model,args.only_model,args.data
+    if ep ==1:
+        topo=np.arange(world_size).reshape(-1,pp,tp)
+        dr,pr,tr=np.where(topo==rank)
+        er = 0
+    else:
+        topo=np.arange(world_size).reshape(pp,-1,tp)
+        pr,dr,tr = np.where(topo==rank)
+        _,_,er,_ = np.where(topo.reshape(pp,-1,ep,tp)==rank)
+        er=er.item()
+    dr=dr.item()
+    pr=pr.item()
+    tr=tr.item()
     downloaded = []
     if model is not None:
+        
         mr=pr*tp+tr
         
-        opt= 'bf16_zero_pp_rank_{dr}_mp_rank_{mr:02d}_optim_states.pt'
+        opt = 'bf16_zero_pp_rank_{dr}_mp_rank_{mr:02d}_optim_states.pt'
         md = 'layer_{pr:02d}-model_{tr:02d}-model_states.pt'
         ms = 'mp_rank_{mr:02d}_model_states.pt'
         
+        ems = '_expert_{er}_mp_rank_{mr:02d}_model_states.pt'
+        eopt = 'expp_rank_{dr}_mp_rank_{mr:02d}_optim_states.pt'
+        
         downloads = [
-            md.format(pr=pr.item(),tr=tr.item()),
-            ms.format(mr=mr.item())
+            md.format(pr=pr,tr=tr),
+            ms.format(mr=mr),
         ]
         if not only_model:
-            downloads.append(opt.format(dr=dr.item(),mr=mr.item()))
-        if tp>1:
+            downloads.append(opt.format(dr=dr,mr=mr))
+            if ep>1:downloads.append(eopt.format(dr=dr,mr=mr))
+        if ep>1:
+            ep_st= "tensor-{tr:02d}-of-{tp:02d}-expert-{er:02d}-of-{ep:02d}-pipeline-{pr:02d}-of-{pp:02d}.safetensors"
+            downloads.append(ep_st.format(tr=tr+1,tp=tp,er=er+1,ep=ep,pr=pr+1,pp=pp))
+            if er!=0:downloads.append(ep_st.format(tr=tr+1,tp=tp,er=1,ep=ep,pr=pr+1,pp=pp))
+            downloads.extend([f for f in obs_list_dir(model) if ems.format(er=er,mr=mr) in f])
+        elif tp>1:
             tp_st = "tensor-{tr:02d}-of-{tp:02d}-pipeline-{pr:02d}-of-{pp:02d}.safetensors"
-            downloads.append(tp_st.format(tr=tr.item()+1,tp=tp,pr=pr.item()+1,pp=pp))
+            downloads.append(tp_st.format(tr=tr+1,tp=tp,pr=pr+1,pp=pp))
         elif pp>1:
             pp_st = "model-{pr:05d}-of-{pp:05d}.safetensors"
-            downloads.append(pp_st.format(pr=pr.item()+1,pp=pp))
+            downloads.append(pp_st.format(pr=pr+1,pp=pp))
         else:
             downloads.append('model.safetensors')
         downloads.append('config.json')
         
         for file in downloads:
-            file_path = os.path.join(model,file)
+            file_path = os.path.join(model,file) if not line.startswith('obs://') else file
             if obs_exists(file_path):
                 if file.endswith('safetensors') or (file=='config.json' and rank%8==0):
                     obs_copy(file_path,os.path.join('/cache/model',file))
@@ -95,6 +115,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--pp', type=int,default=1,help='pp size' )
     parser.add_argument('--tp', type=int,default=1,help='tp size' )
+    parser.add_argument('--ep', type=int,default=1,help='ep size' )
     parser.add_argument('--data', type=str,help='train data obs path')
     parser.add_argument('--model', type=str,help='model obs path')
     parser.add_argument('--only_model', action='store_true',help='only download model')
@@ -110,12 +131,7 @@ if __name__=='__main__':
     with ProcessPoolExecutor(max_workers=8) as exe:
         func = partial(obs_download,
                        world_size=int(os.environ["WORLD_SIZE"]),
-                       pp=args.pp,
-                       tp=args.tp,
-                       model=args.model,
-                       only_model=args.only_model,
-                       data=args.data)
-        
+                       args=args)
         result = list(exe.map(func,range(NODE_RANK*8,NODE_RANK*8+8)))
     sync_file=os.path.join(sync_dir,f'{NODE_RANK:04}.txt')
     local_file=f'/tmp/{NODE_RANK:04}.txt'
