@@ -1,3 +1,5 @@
+import os
+import torch
 
 from deepspeed.runtime.pipe.module import PipelineModule,logger,ds_utils,LayerSpec,nn
 def custom_partition_layers(self, method='uniform'):
