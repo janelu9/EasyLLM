@@ -87,7 +87,7 @@ if __name__=='__main__':
             t=te%tensor_size
             get_weights_(pipe2hf,state_dict,source_dict,t,tensor_size)
             model_file=os.path.join(args.output,f"tensor-{t+1:02d}-of-{tensor_size:02d}-expert-{e+1:02d}-of-{expert_size:02d}-pipeline-{p + 1:02d}-of-{pipe_size:02d}.safetensors" )
-            save_file(state_dict,model_file)
+            if state_dict:save_file(state_dict,model_file)
             print(f'saved {model_file}')
         
     with ProcessPoolExecutor(max_workers=args.pipe_parallel_size) as exe:

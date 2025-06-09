@@ -29,7 +29,6 @@ from .trainer import train
 from .ds_config import get_train_ds_config
 from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 from deepspeed.runtime.pipe import ProcessTopology
-import jllm.deepspeed_patch
 from functools import partial
 import pyarrow.parquet
 import numpy as np
@@ -657,7 +656,7 @@ def main(args):
     num_train_batch *=((seq_len-1)//4096 if args.force_4k else 1)
     num_update_steps_per_epoch = num_train_batch // args.gradient_accumulation_steps + len(train_data_partitions) - 1
     args.num_training_steps = int(args.num_train_epochs * num_update_steps_per_epoch)
-    args.aux_loss_step = int(args.num_training_steps*args.aux_loss_step if args.aux_loss_step<1 else args.aux_loss_step)
+    args.aux_loss_step = int(args.num_training_steps*args.aux_loss_step if args.aux_loss_step<=1 else args.aux_loss_step)
     if 'scheduler' not in ds_config:
         lr_scheduler = get_scheduler(
             name=args.lr_scheduler_type,
@@ -677,4 +676,5 @@ def main(args):
     train(args,engine,train_data_partitions,eval_data_partitions if args.eval_data else None)
 
 if __name__ == "__main__":
+    import jllm.deepspeed_patch
     main(args)
