@@ -76,7 +76,7 @@ SDLoaderBase.check_ckpt_list = check_ckpt_list
 from jllm.train_pipe import get_args
 if get_args().expert_parallel_size>1:
     from deepspeed.moe import layer
-    from deepspeed.runtime import engine,utils
+    from deepspeed.runtime import engine
     from deepspeed.moe import utils 
     from deepspeed.profiling import flops_profiler 
     from jllm.model.deepseek_v3.parallel_deepseek_v3 import DeepseekV3MoE
@@ -85,7 +85,10 @@ if get_args().expert_parallel_size>1:
     engine.MoE=DeepseekV3MoE
     utils.MoE=DeepseekV3MoE
     flops_profiler.MoE=DeepseekV3MoE
-
+    
+    from deepspeed.runtime.utils import get_global_norm_of_tensors,get_accelerator,inf
+    from deepspeed.runtime import bf16_optimizer
+    
     def get_norm_with_moe_layers(non_expert_norm, mpu, expert_tensors, norm_type=2):
         def to_tensor(v):
             return get_accelerator().FloatTensor([float(v)]).detach()
@@ -108,7 +111,7 @@ if get_args().expert_parallel_size>1:
             if total_norm == float('inf') or total_norm == -float('inf'):
                 total_norm = -1
         return total_norm
-    utils.get_norm_with_moe_layers=get_norm_with_moe_layers
+    bf16_optimizer.get_norm_with_moe_layers=get_norm_with_moe_layers
 
     from deepspeed.runtime.engine import (DeepSpeedEngine,logger,groups,defaultdict,re,remove_random_ltd_state_dict,
                                           TorchCheckpointEngine,)
