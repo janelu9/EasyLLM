@@ -86,7 +86,7 @@ def obs_download(rank,world_size,args):
         downloads.append('config.json')
         
         for file in downloads:
-            file_path = os.path.join(model,file) if not line.startswith('obs://') else file
+            file_path = os.path.join(model,file) if not file.startswith('obs://') else file
             if obs_exists(file_path):
                 if file.endswith('safetensors') or (file=='config.json' and rank%8==0):
                     obs_copy(file_path,os.path.join('/cache/model',file))
