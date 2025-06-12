@@ -23,7 +23,7 @@ def obs_list_dir(path,recursive=False):
 def obs_copy(src,dst,recursive=False):
     cmd = ['obsutil', 'cp', src, dst, '-f']
     if recursive:
-        cmd.append('-r')
+        cmd.extend(['-r','-flat'])
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 def obs_exists(path):
@@ -98,17 +98,22 @@ def obs_download(rank,world_size,args):
             obs_copy(file_path,os.path.join('/cache/model/1',file))
             downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": 1/"+file)
             with open('/cache/model/latest','w') as f:f.write('1')
-    if data is not None and obs_exists(data):
-        if pr==0 and tr ==0:
-            obs_copy(data,'/cache/data',True)
-            downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+data)
-        elif rank%8==0:
-            for file in obs_list_dir(data, recursive=False):
-                if file[-4:]=='.crc':
-                    obs_copy(os.path.join(data,file),os.path.join('/cache/data',file))
-                    downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
-                else:
-                    os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
+    if data is not None :
+        if not data.endswith('/'):
+            data += '/'
+        if obs_exists(data):
+            if pr==0 and tr ==0:
+                obs_copy(data,'/cache/data',True)
+                downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+data)
+            elif rank%8==0:
+                for file_path in obs_list_dir(data, recursive=False):
+                    if file_path.endswith('/'):file_path=file_path[:-1]
+                    file = os.path.basename(file_path)
+                    if file[-4:]=='.crc':
+                        obs_copy(file_path,os.path.join('/cache/data',file))
+                        downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
+                    else:
+                        os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
     return downloaded
 
 if __name__=='__main__':
