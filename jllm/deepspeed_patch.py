@@ -73,8 +73,8 @@ def check_ckpt_list(self):
             # 'mp_world_size'], f"checkpoint count {len(self.ckpt_list)} is different from saved mp_world_size {sd['mp_world_size']}"
 SDLoaderBase.check_ckpt_list = check_ckpt_list
 
-from jllm.train_pipe import get_args
-if get_args().expert_parallel_size>1:
+from jllm.train_pipe import args
+if args.expert_parallel_size>1:
     from deepspeed.moe import layer
     from deepspeed.runtime import engine
     from deepspeed.moe import utils 
