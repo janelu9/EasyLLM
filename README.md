@@ -133,7 +133,8 @@ shuffled_datasets/
 #### Large Language Model (4D Parallelism):
 
 ```shell
-deepspeed --module jllm.train_pipe \
+torchrun ${DISTRIBUTED_ARGS[@]} \
+	-m jllm.train_pipe \
     --model Qwen2.5-7B-Instruct \
     --num_train_epochs 3 \
     --train_data dataset0_Qwen2.5-7B-Instruct \
@@ -153,8 +154,8 @@ deepspeed --module jllm.train_pipe \
 #### **Vision Language Model**:
 
 ```shell
-deepspeed -H $HOSTFILE \
-    --module jllm.train_pipe \
+torchrun ${DISTRIBUTED_ARGS[@]} \
+    -m jllm.train_pipe \
     --model Qwen2.5-VL-7B-Instruct \
     --num_train_epochs 3 \
     --train_data dataset_vl_Qwen2.5-VL-7B-Instruct \
@@ -217,7 +218,9 @@ python -m jllm.vllm --model Qwen2.5-7B-Instruct \
 3. Train:
 
 ```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 deepspeed --module jllm.train_pipe \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
+torchrun ${DISTRIBUTED_ARGS[@]} \
+    -m jllm.train_pipe \
     --model Qwen2.5-7B-Instruct \
     --num_train_epochs 2 \
     --train_data dataset0_Qwen2.5-7B-Instruct \
@@ -247,7 +250,7 @@ If argument `--only_ckpt_model`  is enabled , engine will directly only checkpoi
 You can also convert model's weights from deepspeed's checkpoint to HF's format by `jllm.train_pipe`, such as:
 
 ```shell
-deepspeed -H $HOSTFILE \
+torchrun ${DISTRIBUTED_ARGS[@]} \
     --module jllm.train_pipe \
     --model Qwen2-VL-7B-Instruct \
     --train_data dataset_vl_Qwen2-VL-7B-Instruct \

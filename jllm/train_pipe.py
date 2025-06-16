@@ -287,9 +287,9 @@ parser.add_argument("--aux_loss_backward_scale",
 # parser.add_argument('--static_vseqlen',
                     # action='store_true',
                     # help='pad the vlm sequences')
-# parser.add_argument('--static_lseqlen',
-                    # action='store_true',
-                    # help='pad the llm sequences')
+parser.add_argument('--pad_one_per_batch',
+                    action='store_true',
+                    help='pad the one samples every batch.')
 parser.add_argument("--padding_rate",
                     type=float,
                     default=0.0,
@@ -496,6 +496,7 @@ def main(args):
     config.num_partitions = args.emb_partitions
     config.split_dlayer = args.split_dlayer
     config.device = args.device
+    config.pad_one_per_batch=args.pad_one_per_batch
     config.encoder_pipe_parallel_size = args.encoder_pipe_parallel_size
     config.lora = args.lora_dim>0
     config.lora_alpha = args.lora_alpha
