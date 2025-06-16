@@ -2,9 +2,8 @@ import os
 import torch
 import ray
 from vllm import LLM
-from datetime import timedelta
 from jllm.cat2hf import parallel_type
-from jllm.distributed_util import init_process_group
+from jllm.rlhf import stateless_init_process_group
 
 if hasattr(torch,'npu'):
     NPU=True
@@ -68,15 +67,13 @@ class WorkerExtension:
         if rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
             if rank < pp_rank_of_global_rank_in_vllm or pp_rank_of_global_rank_in_vllm == -1:
                 rank += rank_offset
-            self.model_update_groups[global_rank] = init_process_group(
-                backend="hccl" if NPU else "nccl",
-                init_method=f"tcp://{master_address}:{master_port}",
-                world_size=world_size,
-                rank=rank,
-                timeout=timedelta(seconds=30),
-                group_name=f"pg_group_{master_address}_{master_port}"
+            self.model_update_groups[global_rank] = stateless_init_process_group(
+                master_address,
+                master_port,
+                rank,
+                world_size,
+                self.device,
             )
-
 
     def update_weight_by_nccl(self,
                               global_rank,
@@ -87,7 +84,7 @@ class WorkerExtension:
         from vllm.distributed.parallel_state import get_world_group
         if self.pp_rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
             weight = torch.empty(shape, dtype=dtype, device="cuda")
-            torch.distributed.broadcast(weight, src=0,group=self.model_update_groups[global_rank])
+            self.model_update_groups[global_rank].broadcast(weight,src=0,stream=torch.cuda.current_stream())
             if self.tp_size>1 and tile:
                 dim = parallel_type(name)
                 if dim==0:
