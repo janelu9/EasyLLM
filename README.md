@@ -20,19 +20,18 @@ Training Large Language Model faster, easily and low-cost.
 pip wheel -e . --no-deps && pip install jllm-*-py3-none-any.whl
 ```
 
-## Data Processing
+## Quick Start
 
-This step is optional but recommended especially when your data are too big to be loaded to CPU memory at once.
-
-### Conversion
+### Data Conversion
 
 Convert the raw data to token ids stored in parquet files.
 
 ```shell
 python -m jllm.raw2ids \
-    --tokenizer Qwen2.5-7B-Instruct \
+    --tokenizer DeepSeek-R1 \
     -i dataset0.jsonl \
-    -o dataset0_Qwen2.5-7B-Instruct
+    -o dataset0_DeepSeek-R1 \
+    --max_len 8193
 ```
 
 - Pre-train dataset's samples should be separated by *`'\n\n'`* in text files or be the value of  key *`'text'`* in jsonl files.
@@ -53,97 +52,22 @@ Folder *`images`* stores all the images data.  Format of  *`dataset_vl.jsonl`* i
 
 *`[{'user':['Give a description of these pictures please.\n <image>....','image0.jpg',...]},{'assistant':'This is ....'}]`*
 
-### Shuffle (For Pretrain)
+### Model Training
 
-If you have multiple datasets, you shouldn't skip this step. It could shuffle all the datasets globally by rows like [Spark](https://spark.apache.org) doing. 
-
-Firstly, move all the datasets stored in parquet folders into one directory. such as `datasets`:
-
-```shell
-datasets
-├── dataset0_Qwen2.5-7B-Instruct
-│   ├── dataset0-00000
-│   │   ├── dataset0-00000-00000.gzip.parquet
-│   │   └── dataset0-00000-00001.gzip.parquet
-│   └── dataset0-00001
-│       ├── dataset0-00001-00000.gzip.parquet
-│       └── dataset0-00001-00001.gzip.parquet
-└── dataset1_Qwen2.5-7B-Instruct
-    ├── dataset1-00000
-    │   ├── dataset1-00000-00000.gzip.parquet
-    │   └── dataset1-00000-00001.gzip.parquet
-    └── dataset1-00001
-        ├── dataset1-00001-00000.gzip.parquet
-        └── dataset1-00001-00001.gzip.parquet
-```
-
-Then run the following command to shuffle the rows inner each dataset and distribute them to new blocks, `num_block` is recommended to be the multiple of next step's repartition number.
-
-```shell
-python -m jllm.shuffle_datasets -d datasets -o shuffled_datasets -n 4
-```
-
-Every dataset would be shuffled and placed in `shuffled_datasets` with several times of `num_block` parquet files:
-
-```shell
-shuffled_datasets/
-├── dataset0_Qwen2.5-7B-Instruct-00000
-│   ├── dataset0_Qwen2.5-7B-Instruct-00000-00000.gzip.parquet
-│   ├── dataset0_Qwen2.5-7B-Instruct-00000-00001.gzip.parquet
-│   ├── dataset0_Qwen2.5-7B-Instruct-00000-00002.gzip.parquet
-│   └── dataset0_Qwen2.5-7B-Instruct-00000-00003.gzip.parquet
-└── dataset1_Qwen2.5-7B-Instruct-00000
-    ├── dataset1_Qwen2.5-7B-Instruct-00000-00000.gzip.parquet
-    ├── dataset1_Qwen2.5-7B-Instruct-00000-00001.gzip.parquet
-    ├── dataset1_Qwen2.5-7B-Instruct-00000-00002.gzip.parquet
-    └── dataset1_Qwen2.5-7B-Instruct-00000-00003.gzip.parquet
-```
-
-### Repartition (For Pretrain)
-
-Optional but recommended. 1B token ids in parquet files take up to 2G of hard disk at most but require approximately 10G of CPU memory. Setting `num_partition` according to the CPU memory of each worker.
-
-```shell
-python -m jllm.repartition -d shuffled_datasets -n 4
-```
-
-The datasets will be:
-
-```shell
-shuffled_datasets/
-├── 5984729befe338e6a7-part-00000
-│   ├── dataset0_Qwen2.5-7B-Instruct-00000-00000.gzip.parquet
-│   └── dataset1_Qwen2.5-7B-Instruct-00000-00000.gzip.parquet
-├── 5984729befe338e6a7-part-00001
-│   ├── dataset0_Qwen2.5-7B-Instruct-00000-00001.gzip.parquet
-│   └── dataset1_Qwen2.5-7B-Instruct-00000-00001.gzip.parquet
-├── 5984729befe338e6a7-part-00002
-│   ├── dataset0_Qwen2.5-7B-Instruct-00000-00002.gzip.parquet
-│   └── dataset1_Qwen2.5-7B-Instruct-00000-00002.gzip.parquet
-├── 5984729befe338e6a7-part-00003
-│   ├── dataset0_Qwen2.5-7B-Instruct-00000-00003.gzip.parquet
-│   └── dataset1_Qwen2.5-7B-Instruct-00000-00003.gzip.parquet
-└── data.info
-```
-
-*Note: You can also use **PySpark** to do these steps. jllm could directly read token ids from the parquets those write out by **Spark** .* 
-
-## Model Training
-
-#### Large Language Model (4D Parallelism):
+#### Large Language Model :
 
 ```shell
 torchrun ${DISTRIBUTED_ARGS[@]} \
 	-m jllm.train_pipe \
-    --model Qwen2.5-7B-Instruct \
+    --model DeepSeek-R1 \
     --num_train_epochs 3 \
-    --train_data dataset0_Qwen2.5-7B-Instruct \
-    --pipe_parallel_size 2 \
-    --tensor_parallel_size 1 \
-    --sequence_parallel_size 2 \
+    --train_data dataset0_DeepSeek-R1 \
+    --pipe_parallel_size 16 \
+    --tensor_parallel_size 8 \
+    --expert_parallel_size 2 \
     --per_device_train_batch_size 1 \
-    --global_batch_size 32 \
-    --partition_method fast \
+    --global_batch_size 256 \
+    --partition_method 9,5 \
     --split_dlayer \
     --only_ckpt_model \
     --max_num_checkpoints 2 \
@@ -243,7 +167,7 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --isolated_vllm
 ```
 
-#### Checkpoint Conversion
+### Checkpoint Conversion
 
 If argument `--only_ckpt_model`  is enabled , engine will directly only checkpoint model's weights with HF's format.
 
@@ -263,6 +187,8 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --output_dir output_path
 ```
 
+### Weight Merging
+
 To concatenate the weights when ` model_parallel_size>1`:
 
 ```shell
@@ -271,7 +197,7 @@ python -m jllm.cat2hf \
        -H huggingface_model
 ```
 
-#### Supported Models
+## Supported Models
 
 |                       Model                        | Training Speed (tokens/s) |
 | :------------------------------------------------: | :-----------------------: |
@@ -299,6 +225,155 @@ python -m jllm.cat2hf \
 | Qwen2.5-72b |         125327.23         |
 
 *512 **Ascend-910B-64GB NPUs** of Air-cooled, bfloat16, 4096\*4096 tokens/batch.*
+
+## Advanced Tutorial For Data Processing
+
+This step is recommended especially when your data are too big to be loaded to CPU memory at once, such as during pretraining. Here are two methods.
+
+### Python
+
+#### Conversion 
+
+```shell
+python -m jllm.raw2ids \
+    --tokenizer DeepSeek-R1 \
+    -i dataset0.jsonl \
+    -o dataset0_DeepSeek-R1 \
+    --max_len 4097 \
+    --type pretain \
+    --stack
+```
+
+#### Shuffle
+
+If you have multiple datasets, you shouldn't skip this step. It could shuffle all the datasets globally by rows like [Spark](https://spark.apache.org) doing. 
+
+Firstly, move all the datasets stored in parquet folders into one directory. such as `datasets`:
+
+```shell
+datasets
+├── dataset0_DeepSeek-R1
+│   ├── dataset0-00000
+│   │   ├── dataset0-00000-00000.gzip.parquet
+│   │   └── dataset0-00000-00001.gzip.parquet
+│   └── dataset0-00001
+│       ├── dataset0-00001-00000.gzip.parquet
+│       └── dataset0-00001-00001.gzip.parquet
+└── dataset1_DeepSeek-R1
+    ├── dataset1-00000
+    │   ├── dataset1-00000-00000.gzip.parquet
+    │   └── dataset1-00000-00001.gzip.parquet
+    └── dataset1-00001
+        ├── dataset1-00001-00000.gzip.parquet
+        └── dataset1-00001-00001.gzip.parquet
+```
+
+Then run the following command to shuffle the rows inner each dataset and distribute them to new blocks, `num_block` is recommended to be the multiple of next step's repartition number.
+
+```shell
+python -m jllm.shuffle_datasets -d datasets -o shuffled_datasets -n 4
+```
+
+Every dataset would be shuffled and placed in `shuffled_datasets` with several times of `num_block` parquet files:
+
+```shell
+shuffled_datasets/
+├── dataset0_DeepSeek-R1-00000
+│   ├── dataset0_DeepSeek-R1-00000-00000.gzip.parquet
+│   ├── dataset0_DeepSeek-R1-00000-00001.gzip.parquet
+│   ├── dataset0_DeepSeek-R1-00000-00002.gzip.parquet
+│   └── dataset0_DeepSeek-R1-00000-00003.gzip.parquet
+└── dataset1_DeepSeek-R1-00000
+    ├── dataset1_DeepSeek-R1-00000-00000.gzip.parquet
+    ├── dataset1_DeepSeek-R1-00000-00001.gzip.parquet
+    ├── dataset1_DeepSeek-R1-00000-00002.gzip.parquet
+    └── dataset1_DeepSeek-R1-00000-00003.gzip.parquet
+```
+
+#### Repartition
+
+Optional but recommended. 1B token ids in parquet files take up to 2G of hard disk at most but require approximately 10G of CPU memory. Setting `num_partition` according to the CPU memory of each worker.
+
+```shell
+python -m jllm.repartition -d shuffled_datasets -n 4
+```
+
+The datasets will be:
+
+```shell
+shuffled_datasets/
+├── 5984729befe338e6a7-part-00000
+│   ├── dataset0_DeepSeek-R1-00000-00000.gzip.parquet
+│   └── dataset1_DeepSeek-R1-00000-00000.gzip.parquet
+├── 5984729befe338e6a7-part-00001
+│   ├── dataset0_DeepSeek-R1-00000-00001.gzip.parquet
+│   └── dataset1_DeepSeek-R1-00000-00001.gzip.parquet
+├── 5984729befe338e6a7-part-00002
+│   ├── dataset0_DeepSeek-R1-00000-00002.gzip.parquet
+│   └── dataset1_DeepSeek-R1-00000-00002.gzip.parquet
+├── 5984729befe338e6a7-part-00003
+│   ├── dataset0_DeepSeek-R1-00000-00003.gzip.parquet
+│   └── dataset1_DeepSeek-R1-00000-00003.gzip.parquet
+└── data.info
+```
+
+*Note: You can also use **PySpark** to do these steps. jllm could directly read token ids from the parquets those write out by **Spark** .* 
+
+### PySpark
+
+Shuffle and convert raw data to token ids by pyspark.
+
+```shell
+spark-submit \
+    --master yarn \
+    --deploy-mode cluster \
+    --queue default \
+    --archives hdfs://tokenizer.tgz#python_env \
+    --num-executors 32 \
+    --executor-memory 32G \
+    --executor-cores 32 \
+    --driver-memory 8G \
+    --name 'raw2ids' \
+    --conf spark.yarn.executor.memoryOverhead=128 \
+    --conf spark.driver.maxResultSize=4G \
+    --conf spark.memory.storageFraction=0.8 \
+    --conf spark.sql.metadataCacheTTLSeconds=86400 \
+    --conf spark.yarn.priority=100 \
+    --conf spark.speculation=true \
+    --conf spark.hadoop.hive.exec.dynamic.partition=true \
+    --conf spark.hadoop.hive.exec.dynamic.partition.mode=nonstrict \
+    --conf spark.yarn.appMasterEnv.PYSPARK_PYTHON=./python_env/tokenizer/bin/python \
+    --files hdfs://DeepSeek-R1.tgz \
+    --py-files hdfs://pyspark.zip \
+    jllm.raw2ids_spark \
+    --num_partitions 500 \
+    --tokenizer DeepSeek-R1 \
+    --max_seq_length 4097 \
+    --input_path hdfs://localhost:9000/data \
+    --output_path hdfs://localhost:9000/parquet
+```
+
+Then transport the parquet files to your training cluster's storage. The train data should be:
+
+```shell
+train_data/
+├── part-0000/
+│   ├── part-00000-xxx.snappy.parquet
+|   ...
+└── part-0001/
+│   ├── part-00100-xxx.snappy.parquet
+│   ...
+...
+└── .data_info.crc
+```
+
+`.data_info.crc` is a necessary file under the folder you should create manually.
+
+```shell
+echo '${num_samples} ${max_seq_length} 0 ${max_num_blocks} 2'> train_data/.data_info.crc
+```
+
+Values of `num_samples` and `max_num_blocks` will be printed at the last of yarn's logs once the spark tasks are completed successfully .
 
 ## Citation
 

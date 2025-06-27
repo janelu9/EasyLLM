@@ -242,13 +242,13 @@ def write_parquet(filename,
     if not os.path.exists(partition_dir):
         os.makedirs(partition_dir)
     max_seq_len = 0
-    max_blocks = 0
+    max_num_blocks = 0
     if not auto_batch_size:
         pbar = tqdm.tqdm(float("inf"))
         data = next(item_iter)
         data_batch={k:[data[k]] for k in data}
         max_seq_len = max(max_seq_len,len(data['input_ids']))
-        max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
+        max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
         i=0
         pbar.update(1)
         try:
@@ -257,7 +257,7 @@ def write_parquet(filename,
                     data = next(item_iter)
                     for k in data:data_batch[k].append(data[k])
                     max_seq_len = max(max_seq_len,len(data['input_ids']))
-                    max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
+                    max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
                     i+=1
                     pbar.update(1)
                     
@@ -271,7 +271,7 @@ def write_parquet(filename,
                 data = next(item_iter)
                 data_batch={k:[data[k]] for k in data}
                 max_seq_len = max(max_seq_len,len(data['input_ids']))
-                max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
+                max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
                 i+=1
                 pbar.update(1)
                 
@@ -287,7 +287,7 @@ def write_parquet(filename,
         data = next(item_iter)
         data_batch={k:[data[k]] for k in data}
         max_seq_len = max(max_seq_len,len(data['input_ids']))
-        max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
+        max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
         element_num = sum(data[k].size for k in data)
         i=0
         p=0
@@ -298,7 +298,7 @@ def write_parquet(filename,
             for k in data: 
                 data_batch[k].append(data[k])
                 max_seq_len = max(max_seq_len,len(data['input_ids']))
-                max_blocks = max(max_blocks,len(data.get('cu_seqlens',[])))
+                max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
                 element_num+=data[k].size 
             if element_num > NUM_ELEMENT_LIMIT:
                 pyarrow.parquet.write_table(pyarrow.table(data_batch),
@@ -316,7 +316,7 @@ def write_parquet(filename,
                                         compression=compression) 
 
     del data_batch                                
-    os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_blocks} {len(data.keys())}' > {check_file}")
+    os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
     print(f"{filename} stored in parquet with {i+1} samples")
     gc.collect()
 
@@ -858,10 +858,10 @@ TOKENIZER = {
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', type=str, default="ft")
-    parser.add_argument('-i', type=str, default="data.txt")
-    parser.add_argument('-o', type=str, default="")
-    parser.add_argument('-n', type=int, default=2**23)
+    parser.add_argument('-t','--type', type=str, default="ft")
+    parser.add_argument('-i','--input', type=str, default="data.txt")
+    parser.add_argument('-o','--output', type=str, default="")
+    parser.add_argument('-n','--num_lines_per_partition', type=int, default=2**23)
     parser.add_argument('-c', type=str, default="gzip",choices=('gzip','brotli','snappy','lz4','zstd'))
     parser.add_argument('--batch_size', type=int, default=2**16)
     parser.add_argument('--max_len', type=int, default=2**11)

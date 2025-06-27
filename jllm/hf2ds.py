@@ -11,7 +11,7 @@ import gc,os,tqdm
 import torch
 
 '''
- python -m jllm.hf2ds -p 16 -t 8 -e 4 --partition_method 8,6 -m unsloth/DeepSeek-R1 -o cached_model
+ python -m jllm.hf2ds -p 16 -t 8 -e 4 --partition_method 9,5 -m unsloth/DeepSeek-R1 -o cached_model
 '''
 
 def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
