@@ -97,6 +97,14 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --checkpoint checkpoint
 ```
 
+You can also submit training task by deepspeed mpi:
+
+```shell
+deepspeed -H $HOSTFILE \
+    --module jllm.train_pipe \
+    ...
+```
+
 ***Note**: Arguments `train_data` and `eval_data` also support `jsonl` file. Run `python -m jllm.train_pipe -h ` for more arguments.* 
 
 Generally, every GPU process reads one piece of data, that means one node with 8 GPUs will need to allocate a total of 8x CPU memory for data.  But now they need just 1x if these GPUs belong to one pipeline under my special optimizations in this project . **I strongly recommend you to train your model with faster and low-cost Pipeline Parallelism** rather than ZERO. Pipeline engine could directly load and save model's weights in HuggingFace's format. It could also load weights from checkpoint. If you want to resume interruption, any configs related to training shouldn't be modified. 
@@ -321,9 +329,10 @@ shuffled_datasets/
 
 ### PySpark
 
-Shuffle and convert raw data to token ids by pyspark.
+Shuffle and convert raw data of `jsonl` to token ids of `parquet` by pyspark.
 
 ```shell
+tokenizer="DeepSeek-R1"
 spark-submit \
     --master yarn \
     --deploy-mode cluster \
@@ -343,13 +352,13 @@ spark-submit \
     --conf spark.hadoop.hive.exec.dynamic.partition=true \
     --conf spark.hadoop.hive.exec.dynamic.partition.mode=nonstrict \
     --conf spark.yarn.appMasterEnv.PYSPARK_PYTHON=./python_env/tokenizer/bin/python \
-    --files hdfs://DeepSeek-R1.tgz \
+    --files hdfs://${tokenizer}.tgz \
     --py-files hdfs://pyspark.zip \
     jllm.raw2ids_spark \
     --num_partitions 500 \
-    --tokenizer DeepSeek-R1 \
+    --tokenizer ${tokenizer} \
     --max_seq_length 4097 \
-    --input_path hdfs://localhost:9000/data \
+    --input_path hdfs://localhost:9000/jsonl \
     --output_path hdfs://localhost:9000/parquet
 ```
 
