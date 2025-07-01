@@ -197,7 +197,7 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
 
 ### Weight Merging
 
-To concatenate the weights when ` model_parallel_size>1`:
+To concatenate the weights when ` tensor_parallel_size>1`:
 
 ```shell
 python -m jllm.cat2hf \
