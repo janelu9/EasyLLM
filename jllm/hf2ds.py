@@ -1,8 +1,10 @@
 import json
 import argparse
 from transformers import AutoConfig
-from jllm.model.deepseek_v3.parallel_deepseek_v3 import get_layer_map,DeepseekV3ForCausalLM
-from jllm.model import autopartition_transformer,deepseek_v3_get_num_hidden_layers
+from jllm.model import (autopartition_transformer,
+                        get_virtual_num_hidden_layers,
+                        get_layer_map,
+                        ModelParallel)
 from safetensors.torch import save_file, load_file
 from functools import partial
 save_file=partial(save_file,metadata={'format': 'pt'})
@@ -11,7 +13,7 @@ import gc,os,tqdm
 import torch
 
 '''
- python -m jllm.hf2ds -p 16 -t 8 -e 4 --partition_method 9,5 -m unsloth/DeepSeek-R1 -o cached_model
+ python -m jllm.hf2ds -p 16 -t 8 -e 4 --partition_method 8,6 -m unsloth/DeepSeek-R1 -o cached_model
 '''
 
 def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
@@ -23,7 +25,7 @@ def get_weights_(pipe2hf,state_dict,tmp,tensor_rank,tensor_size):
             elif "o_proj" in hk or "mlp.down_proj" in hk:
                 tensor = tensor.chunk(tensor_size,1)[tensor_rank].contiguous()
             state_dict[pk] = tensor
-        elif "gate_up_proj" in pk and hk[0] in tmp:
+        elif ("qkv_proj" in pk or "gate_up_proj" in pk) and hk[0] in tmp:
             state_dict[pk] = torch.cat([tmp.pop(k).chunk(tensor_size,0)[tensor_rank] for k in hk],0).contiguous()
         elif "moe.experts" in pk and hk[0] in tmp:
             state_dict[pk] = torch.stack([tmp.pop(k).T for k in hk]).contiguous()
@@ -51,20 +53,20 @@ if __name__=='__main__':
     config.moe_layer_pipe_size=args.moe_layer_pipe_size
     with open(os.path.join(args.model,"model.safetensors.index.json"),"r") as f: 
         weight_map = json.load(f)["weight_map"]
-    layer_map = get_layer_map(config)
+    layer_map = get_layer_map[config.architectures[0]](config)
     num_expert_per_group = config.n_routed_experts//(config.moe_layer_pipe_size-1)
     num_expert_per_rank = num_expert_per_group//tensor_expert_size
-    partitions = autopartition_transformer(config,args,deepseek_v3_get_num_hidden_layers(config))
+    partitions = autopartition_transformer(config,args,get_virtual_num_hidden_layers[config.architectures[0]](config))
     print(f'partitions:{partitions}')
     def hf2ds(p):
         for te in range(tensor_expert_size):
-            pipe2hf=DeepseekV3ForCausalLM.get_pipe2hf(p,
-                                                      te,
-                                                      partitions,
-                                                      layer_map,
-                                                      num_expert_per_rank,
-                                                      num_expert_per_group,
-                                                      config.num_nextn_predict_layers)
+            pipe2hf=ModelParallel[config.architectures[0]].get_pipe2hf(p,
+                                                                       te,
+                                                                       partitions,
+                                                                       layer_map,
+                                                                       num_expert_per_rank,
+                                                                       num_expert_per_group,
+                                                                       getattr(config,'num_nextn_predict_layers',0))
             e=te//tensor_size
             state_dict={}
             source_dict={}
