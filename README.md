@@ -209,13 +209,13 @@ python -m jllm.cat2hf \
 
 |                       Model                        | Training Speed (tokens/s) |
 | :------------------------------------------------: | :-----------------------: |
-|                       qwen3                        |                           |
-| deepseek-v3-671b (includes multi-token prediction) |                           |
-|                     qwen2.5-vl                     |                           |
+|                  qwen3/qwen3-moe                   |             -             |
+| deepseek-v3-671b (includes multi-token prediction) |             -             |
+|                     qwen2.5-vl                     |             -             |
 |                      qwen2-vl                      |             -             |
 |                     internvl2                      |             -             |
 |                     internlm2                      |             -             |
-|                     qwen2-moe                      |             -             |
+|                  qwen2/qwen2-moe                   |             -             |
 |                      qwen-14b                      |       80749.57(old)       |
 |                    baichuan-13b                    |       79765.50(old)       |
 |                     llama-13b                      |       92749.82(old)       |
@@ -368,7 +368,7 @@ Then transport the parquet files to your training cluster's storage. The train d
 train_data/
 ├── part-0000/
 │   ├── part-00000-xxx.snappy.parquet
-|   ...
+│   ...
 └── part-0001/
 │   ├── part-00100-xxx.snappy.parquet
 │   ...
