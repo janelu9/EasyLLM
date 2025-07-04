@@ -58,7 +58,7 @@ Folder *`images`* stores all the images data.  Format of  *`dataset_vl.jsonl`* i
 
 ```shell
 torchrun ${DISTRIBUTED_ARGS[@]} \
-	-m jllm.train_pipe \
+    -m jllm.train_pipe \
     --model DeepSeek-R1 \
     --num_train_epochs 3 \
     --train_data dataset0_DeepSeek-R1 \
