@@ -115,8 +115,12 @@ class WorkerExtension:
             torch.cuda.synchronize()
 
 class vLLM(LLM):
-    def __init__(self, *args, **kwargs):
-        os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+    def __init__(self, *args,bundle_indices, **kwargs):
+        if not NPU:
+            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+            os.environ["VLLM_RAY_PER_WORKER_GPUS"] = "0.6"
+            os.environ["VLLM_RAY_BUNDLE_INDICES"] = ",".join(map(str, bundle_indices))
         super().__init__(*args, **kwargs)
         
 def init_vllm(address,
@@ -137,24 +141,28 @@ def init_vllm(address,
         pg = placement_group([{"GPU": 1, "CPU": 0}]*gpus)
         ray.get(pg.ready())
         distributed_executor_backend = 'ray'
-
-    vllm_actor = ray.remote(
-        num_cpus=0,
-        num_gpus=0,
-        scheduling_strategy=None if NPU else PlacementGroupSchedulingStrategy(placement_group=pg,placement_group_capture_child_tasks=True),
-        resources= {"NPU" : gpus} if NPU else None
-    )(vLLM).options(name="llm",namespace="vllm", lifetime="detached").remote(
-        model=model,
-        enforce_eager=True,
-        worker_extension_cls="jllm.vllm.WorkerExtension",
-        tensor_parallel_size=tensor_parallel_size,
-        pipeline_parallel_size=pipeline_parallel_size,
-        distributed_executor_backend=distributed_executor_backend,
-        gpu_memory_utilization=gpu_memory_utilization,
-        max_num_batched_tokens=max_num_batched_tokens,
-        max_model_len=max_model_len,
-    )
-    ray.get(vllm_actor.collective_rpc.remote("report_device_id"))
+    
+    model_size = tensor_parallel_size*pipeline_parallel_size
+    num_engines = gpus//model_size
+    for i in range(num_engines):
+        vllm_actor = ray.remote(
+            num_cpus=0,
+            num_gpus=0,
+            scheduling_strategy=None if NPU else PlacementGroupSchedulingStrategy(placement_group=pg,placement_group_capture_child_tasks=True),
+            resources= {"NPU" : model_size} if NPU else None
+        )(vLLM).options(name=f"llm_{i}",namespace="vllm", lifetime="detached").remote(
+            model=model,
+            enforce_eager=True,
+            worker_extension_cls="jllm.vllm.WorkerExtension",
+            tensor_parallel_size=tensor_parallel_size,
+            pipeline_parallel_size=pipeline_parallel_size,
+            distributed_executor_backend=distributed_executor_backend,
+            gpu_memory_utilization=gpu_memory_utilization,
+            max_num_batched_tokens=max_num_batched_tokens,
+            max_model_len=max_model_len,
+            bundle_indices=None if NPU else list(range(i*model_size,(i+1)*model_size)),
+        )
+        ray.get(vllm_actor.collective_rpc.remote("report_device_id"))
     return vllm_actor
 
 if __name__=='__main__':
@@ -180,6 +188,10 @@ if __name__=='__main__':
                         type=str,
                         default=None,
                         help="ray's master ip.")
+    parser.add_argument("--ray_port",
+                        type=str,
+                        default='6380',
+                        help="ray's master port.")
     parser.add_argument("--vllm_tp",
                         type=int,
                         default=1,
@@ -202,7 +214,7 @@ if __name__=='__main__':
     from vllm.utils import get_ip
     ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
     try:
-        actor=init_vllm(f"{ray_ip}:6380",
+        actor=init_vllm(f"{ray_ip}:{args.ray_port}",
                         args.model,
                         gpu_memory_utilization=args.vllm_mem,
                         tensor_parallel_size=args.vllm_tp,

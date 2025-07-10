@@ -444,37 +444,39 @@ def token_vl(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = []
 
 def main(args):
     print(args)
-    source=os.path.abspath(args.i)
+    source=os.path.abspath(args.input)
+    while source.endswith('/'):
+        source=source[:-1]
     source_dir=os.path.dirname(source)
     file =os.path.basename(source)
     file_name = os.path.splitext(file)[0]
     if os.path.isfile(source):
         tmp = os.path.join(source_dir,args.tmp)
-        if not os.path.exists(tmp) or args.C:
+        if not os.path.exists(tmp) or args.clean:
             os.system(f" rm -rf {tmp}") 
             os.makedirs(tmp)
-            os.system(f"cd {tmp};split -d -a 5 -{args.n} ../{file} {file_name}-;cd -;")
+            os.system(f"cd {tmp};split -d -a 5 -{args.num_lines_per_partition} ../{file} {file_name}-;cd -;")
     else:
         tmp = source
-    output_dir = args.o if args.o !="" else os.path.join(source_dir,file_name+f"_{os.path.basename(args.tokenizer)}")
+    output_dir = args.output if args.output !="" else os.path.join(source_dir,file_name+f"_{os.path.basename(args.tokenizer)}")
     if os.path.exists(output_dir):
-        if args.C:
+        if args.clean:
             os.system(f" rm -rf {output_dir}/*")
             os.system(f" rm -rf {output_dir}/.*.crc")
     else:
         os.makedirs(output_dir)
     
-    Pool = ThreadPoolExecutor if args.T else ProcessPoolExecutor
+    Pool = ThreadPoolExecutor if args.thread else ProcessPoolExecutor
     cpus=int(os.cpu_count()*0.8) if args.cores <0 else  args.cores
-    print(f"########## begine converting {args.t} data with {cpus} executors.###########" )
+    print(f"########## begine converting {args.type} data with {cpus} executors.###########" )
     with Pool(max_workers=cpus) as exe:
         func = partial(write_parquet,
                        output_dir=output_dir,
                        tokenizer=args.tokenizer,
                        MAX_SEQ_LENGTH= args.max_len,
-                       dtype=args.t,
+                       dtype=args.type,
                        batch_size=args.batch_size,
-                       compression=args.c.lower(),
+                       compression=args.compress.lower(),
                        stack=args.stack,
                        image_path=args.image_path,
                        padding=args.pad,
@@ -862,7 +864,7 @@ if __name__=='__main__':
     parser.add_argument('-i','--input', type=str, default="data.txt")
     parser.add_argument('-o','--output', type=str, default="")
     parser.add_argument('-n','--num_lines_per_partition', type=int, default=2**23)
-    parser.add_argument('-c', type=str, default="gzip",choices=('gzip','brotli','snappy','lz4','zstd'))
+    parser.add_argument('-c','--compress', type=str, default="gzip",choices=('gzip','brotli','snappy','lz4','zstd'))
     parser.add_argument('--batch_size', type=int, default=2**16)
     parser.add_argument('--max_len', type=int, default=2**11)
     parser.add_argument('--cores', type=int, default=-1)
@@ -872,8 +874,8 @@ if __name__=='__main__':
     parser.add_argument('--image_path', type=str, default="")
     parser.add_argument('--tmp', type=str, default="tmp")
     parser.add_argument('--stack', action='store_true', help="stack tokens")
-    parser.add_argument('-T', action='store_true', help="thread")
-    parser.add_argument('-C', action='store_true', help="clean")
+    parser.add_argument('-T','--thread', action='store_true', help="thread")
+    parser.add_argument('-C','--clean', action='store_true', help="clean")
     parser.add_argument('--pad', action='store_true', help="pad the token.")
     parser.add_argument('--filter', action='store_true', help="filter the samples of all null tokens.")
     args = parser.parse_args()

@@ -281,6 +281,10 @@ parser.add_argument("--aux_loss_backward_scale",
                     type=float,
                     default=1.0,
                     help="aux loss backward scale.")
+parser.add_argument("--swap_experts_per_steps",
+                    type=int,
+                    default=0,
+                    help="swap experts per train steps.")
 # parser.add_argument('--sequence_parallel',
                     # action='store_true',
                     # help='if enable sequence parallel.')
@@ -342,6 +346,10 @@ parser.add_argument("--ray_ip",
                     type=str,
                     default=None,
                     help="ray's master ip.")
+parser.add_argument("--ray_port",
+                    type=str,
+                    default='6380',
+                    help="ray's master port.")
 parser.add_argument("--vllm_tp",
                     type=int,
                     default=1,
@@ -358,6 +366,10 @@ parser.add_argument("--ray_gpus",
                     type=int,
                     default=1,
                     help="num of each ray cluster's gpus.")
+parser.add_argument("--num_vllm_engines",
+                    type=int,
+                    default=1,
+                    help="num of vllm workers.")
 parser.add_argument("--reward_func",
                     type=str,
                     default=None,
@@ -464,28 +476,6 @@ def main(args):
     
     spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size,args.sequence_parallel_size)
     
-    if args.rlhf:
-        from jllm import rlhf
-        from vllm.utils import get_ip
-        ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
-        if args.isolated_vllm:
-            rlhf.connect_vllm_actor(f"{ray_ip}:6380")
-        else:
-            from jllm.vllm import init_vllm
-            if args.global_rank==0:
-                vllm_actor = init_vllm(f"{ray_ip}:6380",
-                                       args.model,
-                                       gpu_memory_utilization=args.vllm_mem,
-                                       tensor_parallel_size=args.vllm_tp,
-                                       pipeline_parallel_size=args.vllm_pp,
-                                       gpus=args.ray_gpus,
-                                       max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.seq_len,
-                                       max_model_len =args.max_new_tokens+args.seq_len)
-                rlhf.vllm_actor=vllm_actor
-            torch.distributed.barrier()
-            if args.global_rank!=0:
-                rlhf.connect_vllm_actor(f"{ray_ip}:6380")
-    
     try:
         config = AutoConfig.from_pretrained(args.model,trust_remote_code=True)
     except:
@@ -505,6 +495,7 @@ def main(args):
     config.max_num_images = args.max_num_images
     config.moe_layer_pipe_size=args.moe_layer_pipe_size
     config.aux_loss_backward_scale=args.aux_loss_backward_scale
+    config.swap_experts_per_steps=args.swap_experts_per_steps
     config.gradient_accumulation_steps = args.gradient_accumulation_steps
     config.rlhf=args.rlhf
     config.num_generations = args.num_generations
@@ -567,6 +558,30 @@ def main(args):
     else:
         topo = ProcessTopology(['pipe','data','model'], [args.pipe_parallel_size, args.data_parallel_size, args.tensor_parallel_size])
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
+    
+    if args.rlhf:
+        from jllm import rlhf
+        from vllm.utils import get_ip
+        ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
+        dp_rank = topo.get_coord(rank=args.global_rank).data
+        if args.isolated_vllm:
+            rlhf.connect_vllm_actor(f"{ray_ip}:{args.ray_port}",dp_rank%args.num_vllm_engines)
+        else:
+            from jllm.vllm import init_vllm
+            if args.global_rank==0:
+                vllm_actor = init_vllm(f"{ray_ip}:{args.ray_port}",
+                                       args.model,
+                                       gpu_memory_utilization=args.vllm_mem,
+                                       tensor_parallel_size=args.vllm_tp,
+                                       pipeline_parallel_size=args.vllm_pp,
+                                       gpus=args.ray_gpus,
+                                       max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.seq_len,
+                                       max_model_len =args.max_new_tokens+args.seq_len)
+                rlhf.vllm_actor=vllm_actor
+            torch.distributed.barrier()
+            if args.global_rank!=0:
+                num_vllm_engines = args.ray_gpus//vllm_tp//vllm_tp
+                rlhf.connect_vllm_actor(f"{ray_ip}:{args.ray_port}",dp_rank%num_vllm_engines)
     
     if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2:
         if args.device == 'npu':

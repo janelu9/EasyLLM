@@ -57,6 +57,13 @@ Folder *`images`* stores all the images data.  Format of  *`dataset_vl.jsonl`* i
 #### Large Language Model :
 
 ```shell
+DISTRIBUTED_ARGS=(
+    --nproc_per_node $GPUS_PER_NODE 
+    --nnodes $NUM_NODES 
+    --master_addr $MASTER_ADDR 
+    --master_port $MASTER_PORT
+)
+
 torchrun ${DISTRIBUTED_ARGS[@]} \
     -m jllm.train_pipe \
     --model DeepSeek-R1 \
@@ -100,7 +107,11 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
 You can also submit training task by deepspeed mpi:
 
 ```shell
-deepspeed -H $HOSTFILE \
+HOSTFILE= """
+10.0.0.0 slots=$GPUS_PER_NODE
+10.0.0.1 slots=$GPUS_PER_NODE
+"""
+deepspeed -H ${HOSTFILE} \
     --module jllm.train_pipe \
     ...
 ```
@@ -151,8 +162,7 @@ python -m jllm.vllm --model Qwen2.5-7B-Instruct \
 
 ```shell
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
-torchrun ${DISTRIBUTED_ARGS[@]} \
-    -m jllm.train_pipe \
+deepspeed --module jllm.train_pipe \
     --model Qwen2.5-7B-Instruct \
     --num_train_epochs 2 \
     --train_data dataset0_Qwen2.5-7B-Instruct \
