@@ -288,9 +288,10 @@ parser.add_argument("--swap_experts_per_steps",
 # parser.add_argument('--sequence_parallel',
                     # action='store_true',
                     # help='if enable sequence parallel.')
-# parser.add_argument('--static_vseqlen',
-                    # action='store_true',
-                    # help='pad the vlm sequences')
+parser.add_argument('--balance_experts_timeout',
+                    type=int,
+                    default=60,
+                    help="balance experts timeout.")
 parser.add_argument('--pad_one_per_batch',
                     action='store_true',
                     help='pad the one samples every batch.')

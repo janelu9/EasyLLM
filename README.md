@@ -31,12 +31,12 @@ python -m jllm.raw2ids \
     --tokenizer DeepSeek-R1 \
     -i dataset0.jsonl \
     -o dataset0_DeepSeek-R1 \
-    --max_len 8193
+    --max_len 8193 -C
 ```
 
-- Pre-train dataset's samples should be separated by *`'\n\n'`* in text files or be the value of  key *`'text'`* in jsonl files.
-- Fine-tune's format should be *`[{'system':content},{'user':content},{'assistant':content},...] `* in each row of jsonl files, key *`'system'`* is not necessary. 
-- RLHF's format is like *`[index,{'user':content}] `.*  *`index`* is an ID of integer.
+- **Pre-train** dataset's samples should be separated by *`'\n\n'`* in text files or be the value of  key *`'text'`* in jsonl files.
+- **Fine-tune**'s format should be *`[{'system':content},{'user':content},{'assistant':content},...] `* in each row of jsonl files, key *`'system'`* is not necessary. 
+- **RLHF**'s format is like *`[index,{'user':content}] `.*  *`index`* is an ID of integer.
 
 **For Vision Language Model:**
 
@@ -140,8 +140,11 @@ def reward_func(index,response):
     return:
     	score: Tensor (1,)
     		The reward sorce of this response.
+    		
+    For example:
+    score = torch.rand(1,device= response.device)
     '''
-    '''TODO'''
+    '''TODO''' 
     return score
 ```
 
@@ -192,18 +195,28 @@ If argument `--only_ckpt_model`  is enabled , engine will directly only checkpoi
 You can also convert model's weights from deepspeed's checkpoint to HF's format by `jllm.train_pipe`, such as:
 
 ```shell
+DISTRIBUTED_ARGS=(
+    --nproc_per_node 8 
+    --nnodes 32
+    --master_addr $MASTER_ADDR 
+    --master_port $MASTER_PORT
+)
+
 torchrun ${DISTRIBUTED_ARGS[@]} \
     --module jllm.train_pipe \
-    --model Qwen2-VL-7B-Instruct \
-    --train_data dataset_vl_Qwen2-VL-7B-Instruct \
-    --pipe_parallel_size 8 \
-    --encoder_pipe_parallel_size 2 \
-    --partition_method 11,2 \
+    --model DeepSeek-R1 \
+    --train_data dataset0_DeepSeek-R1 \
+    --pipe_parallel_size 16 \
+    --tensor_parallel_size 8 \
+    --expert_parallel_size 2 \
+    --partition_method 9,5 \
     --split_dlayer \
     --num_train_epochs 0 \
     --from_ckpt checkpoint --tag 1000 \
     --output_dir output_path
 ```
+
+Giving number of devices that could cover one data parallel is enough.
 
 ### Weight Merging
 
@@ -264,7 +277,7 @@ python -m jllm.raw2ids \
 
 #### Shuffle
 
-If you have multiple datasets, you shouldn't skip this step. It could shuffle all the datasets globally by rows like [Spark](https://spark.apache.org) doing. 
+If you have multiple datasets, you shouldn't skip this step. It could shuffle all the datasets globally by rows like Spark doing. 
 
 Firstly, move all the datasets stored in parquet folders into one directory. such as `datasets`:
 
@@ -335,7 +348,7 @@ shuffled_datasets/
 └── data.info
 ```
 
-*Note: You can also use **PySpark** to do these steps. jllm could directly read token ids from the parquets those write out by **Spark** .* 
+*Note: You can also use **PySpark** to do these steps. jllm could directly read token ids from the parquets those write out by **[Spark]((https://spark.apache.org))** .* 
 
 ### PySpark
 
