@@ -272,6 +272,7 @@ python -m jllm.raw2ids \
     -o dataset0_DeepSeek-R1 \
     --max_len 4097 \
     --type pretain \
+    -n 32768 \
     --stack
 ```
 
