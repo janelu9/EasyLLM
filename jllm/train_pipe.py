@@ -581,8 +581,8 @@ def main(args):
                 rlhf.vllm_actor=vllm_actor
             torch.distributed.barrier()
             if args.global_rank!=0:
-                num_vllm_engines = args.ray_gpus//vllm_tp//vllm_tp
-                rlhf.connect_vllm_actor(f"{ray_ip}:{args.ray_port}",dp_rank%num_vllm_engines)
+                args.num_vllm_engines = args.ray_gpus//vllm_tp//vllm_tp
+                rlhf.connect_vllm_actor(f"{ray_ip}:{args.ray_port}",dp_rank%args.num_vllm_engines)
     
     if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2:
         if args.device == 'npu':

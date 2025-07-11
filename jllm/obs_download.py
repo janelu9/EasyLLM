@@ -107,13 +107,12 @@ def obs_download(rank,world_size,args):
                 downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+data)
             elif rank%8==0:
                 for file_path in obs_list_dir(data, recursive=False):
-                    if file_path.endswith('/'):file_path=file_path[:-1]
-                    file = os.path.basename(file_path)
-                    if file[-4:]=='.crc':
-                        obs_copy(file_path,os.path.join('/cache/data',file))
+                    if file_path.endswith('/'):
+                        os.makedirs(os.path.join('/cache/data',os.path.basename(file_path[:-1])),exist_ok=True)
+                    elif file_path[-4:]=='.crc':
+                        obs_copy(file_path,os.path.join('/cache/data',os.path.basename(file_path)))
                         downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
-                    else:
-                        os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
+                        
     return downloaded
 
 if __name__=='__main__':
