@@ -28,18 +28,16 @@ def split_doc(doc,bos=True,eos=True):
         p += SPLIT_LENGTH - 1
 
 def pretrain_generator(file,sep="\n\n"):
-    with open(file,"r") as f:
-        doc=""
-        line = f.readline()
+    if isinstance(file,list):
         try:
-            while line:
+            for line in file:
                 doc = json.loads(line.strip())['text']
                 for block in split_doc(doc):
                     yield block
-                line = f.readline()  
         except:
+            doc=''
             bos=True
-            while line:
+            for line in file:
                 doc+=line
                 if doc[-2:]==sep:
                     for block in split_doc(doc[:-1],bos):
@@ -51,158 +49,348 @@ def pretrain_generator(file,sep="\n\n"):
                         yield block
                     doc=""
                     bos=False
-                line = f.readline()  
             if doc:
                 for block in split_doc(doc,bos):
                     yield block
-            
-def token_pretrain(file,tokenizer,MAX_SEQ_LENGTH,stack=True):
-    if stack:
-        ids = []
-        cu_seqlens = [0]
-        for bos,doc,eos in pretrain_generator(file):
-            if bos:
-                if len(ids)>0:cu_seqlens.append(len(ids))
-                ids.append(tokenizer.bos_token_id)
-            ids.extend(tokenizer.encode(doc))
-            if eos:
-                ids.append(tokenizer.eos_token_id)
-            p = 0
-            n = len(ids)
-            while p<n-OVERLAPPING_LENGTH:
-                input_ids=ids[p:p+MAX_SEQ_LENGTH]
-                l = len(input_ids)
-                if l==MAX_SEQ_LENGTH:
-                    cu_seqlens.append(MAX_SEQ_LENGTH-1)
-                    yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
-                    cu_seqlens = [0]
-                p += MAX_SEQ_LENGTH-OVERLAPPING_LENGTH
-                
-            if l==MAX_SEQ_LENGTH: # all ids yielded, clear ids
-                ids = []   
-            # elif l>=MAX_SEQ_LENGTH-3: # pad few then yield  
-                # input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
-                # cu_seqlens.append(l)
-                # if l!=MAX_SEQ_LENGTH-1:cu_seqlens.append(MAX_SEQ_LENGTH-1)
-                # yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
-                # cu_seqlens = [0]
-                # ids = []
-            else: # join to next doc
-                ids=input_ids
- 
-        if 2<l<MAX_SEQ_LENGTH:
-            cu_seqlens.append(l)
-            if l!=MAX_SEQ_LENGTH-1:cu_seqlens.append(MAX_SEQ_LENGTH-1)
-            input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
-            yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
     else:
-        for bos,doc,eos in pretrain_generator(file):
-            ids = []
-            if bos:
-                ids.append(tokenizer.bos_token_id)
-            ids.extend(tokenizer.encode(doc))
-            if eos:
-                ids.append(tokenizer.eos_token_id)
-            p = 0
-            n = len(ids)
-            while p<n-OVERLAPPING_LENGTH:
-                input_ids=ids[p:p+MAX_SEQ_LENGTH]
-                l = len(input_ids)
-                if l==MAX_SEQ_LENGTH:
-                    yield {'input_ids':np.array(input_ids,dtype=np.int32)}
-                p += MAX_SEQ_LENGTH-OVERLAPPING_LENGTH
-                
-            if 1<l<MAX_SEQ_LENGTH:
-                input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
-                yield {'input_ids':np.array(input_ids,dtype=np.int32)}
-        
-def finetune_generator(file):
-    with open(file,"r") as f:
-        line = f.readline()
-        while line:
-            yield line
+        with open(file,"r") as f:
             line = f.readline()
-
-def token_finetune(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = [],padding=False,filter_null=False):
-    from jllm.data.utils import qa_inputs_generator
-    for sample in finetune_generator(file):
-        pmt_anses = json.loads(sample.strip())
-        if isinstance(pmt_anses[0],int):
-            labels  = np.array([pmt_anses.pop(0)],dtype=np.int32)
-            msgs = (PREFIX + pmt_anses) if 'system' not in pmt_anses[0] else pmt_anses
-            msgs.append({'assistant':''})
-            ids = []
-            for start,msg in enumerate(msgs):
-                k,v = next(iter(msg.items()))
-                if k != "assistant":
-                    ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
-                    ids.extend(tokenizer.encode(v))
-                    pre_k = k
-                    break 
-            if k != 'system':
-                ids = ADAPT + ids
-            for msg in msgs[start+1:]:
-                k,v = next(iter(msg.items()))
-                if k != pre_k:
-                    if k != "assistant":
-                        ids.append(tokenizer.im_end_id)
-                    ids.extend(ROLE[k])
-                    ids.extend(tokenizer.encode(v))         
-                else:
-                    ids.extend(tokenizer.encode(v))
-                pre_k = k
-            yield {'input_ids':np.array(ids[-MAX_SEQ_LENGTH:],dtype=np.int32),'labels':labels}
-                
-        elif len(pmt_anses)>1:
-            msgs = (PREFIX + pmt_anses) if 'system' not in pmt_anses[0] else pmt_anses
-            ids = []; divide = [0]; 
-            for start,msg in enumerate(msgs):
-                k,v = next(iter(msg.items()))
-                if k != "assistant":
-                    ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
-                    ids.extend(tokenizer.encode(v))
-                    pre_k = k
-                    break
-                    
-            if k != 'system':
-                ids = ADAPT + ids
+            try:
+                while line:
+                    doc = json.loads(line.strip())['text']
+                    for block in split_doc(doc):
+                        yield block
+                    line = f.readline()
+            except:
+                doc=""
+                bos=True
+                while line:
+                    doc+=line
+                    if doc[-2:]==sep:
+                        for block in split_doc(doc[:-1],bos):
+                            yield block
+                        doc=""
+                        bos=True
+                    elif len(doc)>=SPLIT_LENGTH:
+                        for block in split_doc(doc,bos,False):
+                            yield block
+                        doc=""
+                        bos=False
+                    line = f.readline()  
+                if doc:
+                    for block in split_doc(doc,bos):
+                        yield block
             
-            for msg in msgs[start+1:]:
-                k,v = next(iter(msg.items()))
-                disable_thinking = True if k=='assistant' and v.startswith('<think>\n\n</think>') else False
-                if k != pre_k:
-                    if k != "assistant":
-                        ids.append(tokenizer.im_end_id)
-                        if pre_k != "system":
-                            divide.append(len(ids))
-                    ids.extend(ROLE[k])
-                    if k == "assistant":
-                        divide.append((len(ids)+tokenizer.no_thinking_len) if disable_thinking else len(ids))
-                    ids.extend(tokenizer.encode(v))         
-                else:
-                    ids.extend(tokenizer.encode(v))
-                pre_k = k
+def pretrain_stack(iteritems,tokenizer,MAX_SEQ_LENGTH,**kwargs):
+    ids = []
+    cu_seqlens = [0]
+    l = 0
+    for bos,doc,eos in iteritems:
+        if bos:
+            if len(ids)>0:cu_seqlens.append(len(ids))
+            ids.append(tokenizer.bos_token_id)
+        ids.extend(tokenizer.encode(doc))
+        if eos:
+            ids.append(tokenizer.eos_token_id)
+        p = 0
+        n = len(ids)
+        while p<n-OVERLAPPING_LENGTH:
+            input_ids=ids[p:p+MAX_SEQ_LENGTH]
+            l = len(input_ids)
+            if l==MAX_SEQ_LENGTH:
+                cu_seqlens.append(MAX_SEQ_LENGTH-1)
+                yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
+                cu_seqlens = [0]
+            p += MAX_SEQ_LENGTH-OVERLAPPING_LENGTH
+            
+        if l==MAX_SEQ_LENGTH: # all ids yielded, clear ids
+            ids = []   
+        # elif l>=MAX_SEQ_LENGTH-3: # pad few then yield  
+            # input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
+            # cu_seqlens.append(l)
+            # if l!=MAX_SEQ_LENGTH-1:cu_seqlens.append(MAX_SEQ_LENGTH-1)
+            # yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
+            # cu_seqlens = [0]
+            # ids = []
+        else: # join to next doc
+            ids=input_ids
 
-            if k == "assistant":
+    if 2<l<MAX_SEQ_LENGTH:
+        cu_seqlens.append(l)
+        if l!=MAX_SEQ_LENGTH-1:cu_seqlens.append(MAX_SEQ_LENGTH-1)
+        input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
+        yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
+
+def pretrain_pad(iteritems,tokenizer,MAX_SEQ_LENGTH,**kwargs):
+    for bos,doc,eos in iteritems:
+        ids = []
+        if bos:
+            ids.append(tokenizer.bos_token_id)
+        ids.extend(tokenizer.encode(doc))
+        if eos:
+            ids.append(tokenizer.eos_token_id)
+        p = 0
+        n = len(ids)
+        while p<n-OVERLAPPING_LENGTH:
+            input_ids=ids[p:p+MAX_SEQ_LENGTH]
+            l = len(input_ids)
+            if l==MAX_SEQ_LENGTH:
+                yield {'input_ids':np.array(input_ids,dtype=np.int32)}
+            p += MAX_SEQ_LENGTH-OVERLAPPING_LENGTH
+            
+        if 1<l<MAX_SEQ_LENGTH:
+            input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
+            yield {'input_ids':np.array(input_ids,dtype=np.int32)}
+    
+def finetune_generator(file):
+    if isinstance(file,list):
+        for line in file:
+            yield json.loads(line)
+    else:
+        with open(file,"r") as f:
+            line = f.readline()
+            while line:
+                yield json.loads(line)
+                line = f.readline()
+
+def rlhf(rows,tokenizer,MAX_SEQ_LENGTH,
+         ROLE = {},PREFIX = [],ADAPT = [],**kwargs):
+    # rows = json.loads(rows)
+    labels  = np.array([rows.pop(0)],dtype=np.int32)
+    msgs = (PREFIX + rows) if 'system' not in rows[0] else rows
+    msgs.append({'assistant':''})
+    ids = []
+    for start,msg in enumerate(msgs):
+        k,v = next(iter(msg.items()))
+        if k != "assistant":
+            ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
+            ids.extend(tokenizer.encode(v))
+            pre_k = k
+            break 
+    if k != 'system':
+        ids = ADAPT + ids
+    for msg in msgs[start+1:]:
+        k,v = next(iter(msg.items()))
+        if k != pre_k:
+            if k != "assistant":
                 ids.append(tokenizer.im_end_id)
+            ids.extend(ROLE[k])
+            ids.extend(tokenizer.encode(v))         
+        else:
+            ids.extend(tokenizer.encode(v))
+        pre_k = k
+    yield {'input_ids':np.array(ids[-MAX_SEQ_LENGTH:],dtype=np.int32),'labels':labels}
 
-            if len(divide)%2==1:
-                ids=ids[:divide[-1]]
-            else:
-                divide.append(len(ids))
+def finetune(rows,tokenizer,MAX_SEQ_LENGTH,
+             ROLE = {},PREFIX = [],ADAPT = [],
+             qa_inputs_generator=None,padding=False,filter_null=False,**kwargs):
+    # rows = json.loads(rows)
+    msgs = (PREFIX + rows) if 'system' not in rows[0] else rows
+    ids = []; divide = [0]; 
+    for start,msg in enumerate(msgs):
+        k,v = next(iter(msg.items()))
+        if k != "assistant":
+            ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
+            ids.extend(tokenizer.encode(v))
+            pre_k = k
+            break
+            
+    if k != 'system':
+        ids = ADAPT + ids
+    
+    for msg in msgs[start+1:]:
+        k,v = next(iter(msg.items()))
+        disable_thinking = True if k=='assistant' and v.startswith('<think>\n\n</think>') else False
+        if k != pre_k:
+            if k != "assistant":
+                ids.append(tokenizer.im_end_id)
+                if pre_k != "system":
+                    divide.append(len(ids))
+            ids.extend(ROLE[k])
+            if k == "assistant":
+                divide.append((len(ids)+tokenizer.no_thinking_len) if disable_thinking else len(ids))
+            ids.extend(tokenizer.encode(v))         
+        else:
+            ids.extend(tokenizer.encode(v))
+        pre_k = k
+
+    if k == "assistant":
+        ids.append(tokenizer.im_end_id)
+
+    if len(divide)%2==1:
+        ids=ids[:divide[-1]]
+    else:
+        divide.append(len(ids))
+        
+    if len(divide)>2 :
+        for qa_inputs,_ in qa_inputs_generator(ids,
+                                               divide,
+                                               MAX_SEQ_LENGTH,
+                                               MAX_HISTORY_LENGTH = MAX_SEQ_LENGTH//2,
+                                               pad_token_id = tokenizer.pad_token_id,
+                                               IGNORE_TOKEN_ID = -100,
+                                               padding = padding):
+            if filter_null:
+                if np.sum(qa_inputs['labels']!=-100)<=1:
+                    continue
+            yield qa_inputs
+            
+def finetune_vl(iteritems,tokenizer,MAX_SEQ_LENGTH,
+                ROLE = {},PREFIX = [],ADAPT = [],
+                output_dir='',image_path='',padding = False,filter_null=False,**kwargs):
+
+    from jllm.data.utils import qa_inputs_generator,img_token_alignment
+    
+    max_num_patches = 0
+    max_num_images = 0
+    images_database = {}
+    def replace_image_token(v):
+        if not isinstance(v,str):
+            v,*imgs = v
+            pixes = []
+            num_patches = 0
+            num_images = 0
+            for img in imgs:
+                try:
+                    if img not in images_database:
+                        image = cv2.imread(os.path.join(image_path,img))
+                        image_tokens,resize_info,num_patch = tokenizer.get_image_tokens(image)
+                        images_database[img] = (image_tokens,resize_info,num_patch)
+                    else:
+                        image_tokens,_,num_patch = images_database[img]
+                    v=v.replace('<image>', image_tokens,1)
+                    pixes.append(img)
+                    num_patches+=num_patch
+                    num_images+=1
+                except:
+                    v=v.replace('<image>', '<图片>',1)
+                    pixes.append('')
+            return v,pixes if len(pixes) else [''],num_patches,num_images
+        return v,[''],0,0
+
+    for rows in iteritems:
+        # rows = json.loads(rows)
+        msgs = (PREFIX + rows) if 'system' not in rows[0] else rows
+        ids = []
+        divide = [0]
+        pixes = []
+        num_patches = []
+        num_images = []
+        for start,msg in enumerate(msgs):
+            k,v = next(iter(msg.items()))
+            v,p,nps,nis = replace_image_token(v)
+            if k != "assistant":
+                ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
+                ids.extend(tokenizer.encode(v))
+                pre_k = k
+                break
                 
-            if len(divide)>2 :
-                for qa_inputs,_ in qa_inputs_generator(ids,
-                                                       divide,
-                                                       MAX_SEQ_LENGTH,
-                                                       MAX_HISTORY_LENGTH = MAX_SEQ_LENGTH//2,
-                                                       pad_token_id = tokenizer.pad_token_id,
-                                                       IGNORE_TOKEN_ID = -100,
-                                                       padding = padding):
-                    if filter_null:
-                        if np.sum(qa_inputs['labels']!=-100)<=1:
-                            continue
-                    yield qa_inputs
+        if k != 'system':
+            ids = ADAPT + ids
+            pixes.append(p)
+            num_patches.append(nps)
+            num_images.append(nis)
+            
+        for msg in msgs[start+1:]:
+            k,v = next(iter(msg.items()))
+            v,p,nps,nis = replace_image_token(v)
+            if k != pre_k:
+                if k != "assistant":
+                    pixes.append(p)
+                    num_patches.append(nps)
+                    num_images.append(nis)
+                    ids.append(tokenizer.im_end_id)
+                    if pre_k != "system":
+                        divide.append(len(ids))
+                ids.extend(ROLE[k])
+                if k == "assistant":
+                    divide.append(len(ids))
+                ids.extend(tokenizer.encode(v))         
+            else:
+                ids.extend(tokenizer.encode(v))
+            pre_k = k
+
+        if k == "assistant":
+            ids.append(tokenizer.im_end_id)
+
+        if len(divide)%2==1:
+            ids=ids[:divide[-1]]
+        else:
+            divide.append(len(ids))
+            
+        if len(divide)>2 :
+            for qa_inputs,sub_divide in qa_inputs_generator(ids,
+                                                            divide,
+                                                            MAX_SEQ_LENGTH,
+                                                            MAX_HISTORY_LENGTH = MAX_SEQ_LENGTH//2,
+                                                            pad_token_id = tokenizer.pad_token_id,
+                                                            IGNORE_TOKEN_ID = -100,
+                                                            padding=padding):
+                if filter_null:
+                    if np.sum(qa_inputs['labels']!=-100)<=1:
+                        continue
+                        
+                s = sub_divide[0]
+                e = sub_divide[-2] if len(sub_divide)%2 else sub_divide[-1]
+                matched = None
+                if s == divide[0] and e == divide[-2]:
+                    matched = True
+                    si,ei=0,len(divide)//2
+                else:
+                    si,ei = np.searchsorted(divide,[s,e],side='right')
+                    si = (si-1)//2
+                    ei = (ei-1)//2+1
+                    
+                qa_inputs.update({'image_ids':pixes,'matched':matched,'siei':(si,ei)})
+                max_num_patches = max(max_num_patches,sum(num_patches[si:ei]))
+                max_num_images = max(max_num_images,sum(num_images[si:ei]))
+                yield qa_inputs
+                
+    while output_dir.endswith('/'):
+        output_dir=output_dir[:-1]
+    partition_file = f"{output_dir}-image.info"
+    data = {'pic':[],'rat':[]}
+    for k,v in images_database.items():
+        data['pic'].append(k)
+        data['rat'].append(v[1])
+    data['pic'].append(os.path.abspath(image_path))
+    data['rat'].append(np.array([tokenizer.img_bos_token_id,tokenizer.img_eos_token_id,tokenizer.image_size,max_num_patches,max_num_images]))
+    pyarrow.parquet.write_table(pyarrow.table(data),partition_file)
+    print(f"\nAvailable pictures: {len(data['pic'])-1}")  
+   
+def tokenize(file,tokenizer,MAX_SEQ_LENGTH,
+             ROLE = {},PREFIX = [],ADAPT = [],
+             padding=False,filter_null=False,
+             image_path=None,output_dir=None,
+             **kwargs):
+    iteritems = finetune_generator(file)
+    if not hasattr(tokenizer,'get_image_tokens'):
+        row0= next(iteritems)
+        if isinstance(row0[0],int):
+            func = partial(rlhf,tokenizer=tokenizer,MAX_SEQ_LENGTH=MAX_SEQ_LENGTH, ROLE=ROLE, PREFIX=PREFIX, ADAPT=ADAPT)
+        else:
+            from jllm.data.utils import qa_inputs_generator
+            func = partial(finetune,
+                           tokenizer=tokenizer,
+                           MAX_SEQ_LENGTH=MAX_SEQ_LENGTH,
+                           ROLE=ROLE, PREFIX=PREFIX, ADAPT=ADAPT,
+                           qa_inputs_generator=qa_inputs_generator,
+                           padding=padding,filter_null=filter_null)
+            
+        for item in func(row0):
+            yield item
+        for row in iteritems:
+            for item in func(row):
+                yield item
+    else:
+        func = partial(finetune_vl,
+                       tokenizer=tokenizer,
+                       MAX_SEQ_LENGTH=MAX_SEQ_LENGTH,
+                       ROLE=ROLE, PREFIX=PREFIX, ADAPT=ADAPT, 
+                       image_path=image_path,output_dir = output_dir,
+                       padding=padding,filter_null=filter_null)
+        for item in func(iteritems):
+            yield item
    
 def write_parquet(filename,
                   output_dir,
@@ -213,34 +401,50 @@ def write_parquet(filename,
                   compression='gzip',
                   stack=False,
                   image_path='',
+                  max_pixels = 1024**2,
                   padding=False,
                   filter_null=False):
     
     tokenizer = AutoTokenizer.from_pretrained(tokenizer,use_fast=True,trust_remote_code=True,add_bos_token = False)
     tokenizer.encode = partial(tokenizer.encode,add_special_tokens=False)
     tokenizer_class = tokenizer.__class__.__name__ 
-    tokenizer,ROLE,PREFIX,ADAPT = TOKENIZER[tokenizer_class](tokenizer)
+    tokenizer,ROLE,PREFIX,ADAPT = TOKENIZER[tokenizer_class](tokenizer,max_pixels=max_pixels)
     auto_batch_size = False
-    if dtype == 'ft':
-        if not hasattr(tokenizer,'get_image_tokens'):
-            token = partial(token_finetune, ROLE=ROLE, PREFIX=PREFIX, ADAPT=ADAPT,padding=padding,filter_null=filter_null)
-        else:
-            token = partial(token_vl, ROLE=ROLE, PREFIX=PREFIX, ADAPT=ADAPT, 
-                            image_path=image_path,
-                            output_dir = output_dir,
-                            padding=padding,filter_null=filter_null)
+    if isinstance(filename,tuple):
+        filename,chunk_id,contents = filename
+        chunk_id = f'-chunk-{chunk_id:02d}'
     else:
-        token = partial(token_pretrain,stack = stack)
-    item_iter = token(filename,tokenizer,MAX_SEQ_LENGTH)
+        contents = filename
+        chunk_id = ''
+        
     file = os.path.splitext(os.path.basename(filename))[0]
     partition_dir = os.path.join(output_dir , file)
-    partition_file = os.path.join(partition_dir , f"{file}-%05d.{compression}.parquet")
-    check_file = os.path.join(output_dir , "." + file + ".crc")
+    partition_file = os.path.join(partition_dir , f"{file}-%05d{chunk_id}.{compression}.parquet")
+    check_file = os.path.join(output_dir , f".{file}{chunk_id}.crc")
     if os.path.exists(check_file):
-        print(f"{filename} converted, continue!")
+        print(f"{os.path.dirname(filename)}/{file}{chunk_id} converted, continue!")
         return
-    if not os.path.exists(partition_dir):
-        os.makedirs(partition_dir)
+
+    if dtype == 'ft':
+        item_iter =tokenize(contents,
+                            tokenizer,
+                            MAX_SEQ_LENGTH, 
+                            ROLE=ROLE, 
+                            PREFIX=PREFIX, 
+                            ADAPT=ADAPT,
+                            padding=padding,
+                            filter_null=filter_null,
+                            image_path=image_path,
+                            output_dir = partition_dir,
+                            )
+    else:
+        generator = pretrain_generator(contents)
+        if stack:
+            item_iter = pretrain_stack(generator,tokenizer,MAX_SEQ_LENGTH)
+        else:
+            item_iter = pretrain_pad(generator,tokenizer,MAX_SEQ_LENGTH)
+        
+    os.makedirs(partition_dir,exist_ok=True)
     max_seq_len = 0
     max_num_blocks = 0
     if not auto_batch_size:
@@ -313,134 +517,11 @@ def write_parquet(filename,
         if data_batch[k] :
             pyarrow.parquet.write_table(pyarrow.table(data_batch),
                                         partition_file % (p), 
-                                        compression=compression) 
-
+                                        compression=compression)
     del data_batch                                
     os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
-    print(f"{filename} stored in parquet with {i+1} samples")
+    print(f"{os.path.dirname(filename)}/{file}{chunk_id} stored in parquet with {i+1} samples")
     gc.collect()
-
-def token_vl(file,tokenizer,MAX_SEQ_LENGTH,ROLE = {},PREFIX = [],ADAPT = []
-             ,output_dir='',image_path='',padding = False,filter_null=False):
-
-    from jllm.data.utils import qa_inputs_generator,img_token_alignment
-    
-    max_num_patches = 0
-    max_num_images = 0
-    images_database = {}
-    def replace_image_token(v):
-        if not isinstance(v,str):
-            v,*imgs = v
-            pixes = []
-            num_patches = 0
-            num_images = 0
-            for img in imgs:
-                try:
-                    if img not in images_database:
-                        image = cv2.imread(os.path.join(image_path,img))
-                        image_tokens,resize_info,num_patch = tokenizer.get_image_tokens(image)
-                        images_database[img] = (image_tokens,resize_info,num_patch)
-                    else:
-                        image_tokens,_,num_patch = images_database[img]
-                    v=v.replace('<image>', image_tokens,1)
-                    pixes.append(img)
-                    num_patches+=num_patch
-                    num_images+=1
-                except:
-                    v=v.replace('<image>', '<图片>',1)
-                    pixes.append('')
-            return v,pixes if len(pixes) else [''],num_patches,num_images
-        return v,[''],0,0
-
-    for sample in finetune_generator(file):
-        js = json.loads(sample.strip())
-        pmt_anses = js['conversation'] if 'conversation' in js else js
-        if len(pmt_anses) > 1:
-            msgs = (PREFIX + pmt_anses) if 'system' not in pmt_anses[0] else pmt_anses
-            ids = []
-            divide = [0]
-            pixes = []
-            num_patches = []
-            num_images = []
-            for start,msg in enumerate(msgs):
-                k,v = next(iter(msg.items()))
-                v,p,nps,nis = replace_image_token(v)
-                if k != "assistant":
-                    ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
-                    ids.extend(tokenizer.encode(v))
-                    pre_k = k
-                    break
-                    
-            if k != 'system':
-                ids = ADAPT + ids
-                pixes.append(p)
-                num_patches.append(nps)
-                num_images.append(nis)
-                
-            for msg in msgs[start+1:]:
-                k,v = next(iter(msg.items()))
-                v,p,nps,nis = replace_image_token(v)
-                if k != pre_k:
-                    if k != "assistant":
-                        pixes.append(p)
-                        num_patches.append(nps)
-                        num_images.append(nis)
-                        ids.append(tokenizer.im_end_id)
-                        if pre_k != "system":
-                            divide.append(len(ids))
-                    ids.extend(ROLE[k])
-                    if k == "assistant":
-                        divide.append(len(ids))
-                    ids.extend(tokenizer.encode(v))         
-                else:
-                    ids.extend(tokenizer.encode(v))
-                pre_k = k
-
-            if k == "assistant":
-                ids.append(tokenizer.im_end_id)
-
-            if len(divide)%2==1:
-                ids=ids[:divide[-1]]
-            else:
-                divide.append(len(ids))
-                
-            if len(divide)>2 :
-                for qa_inputs,sub_divide in qa_inputs_generator(ids,
-                                                                divide,
-                                                                MAX_SEQ_LENGTH,
-                                                                MAX_HISTORY_LENGTH = MAX_SEQ_LENGTH//2,
-                                                                pad_token_id = tokenizer.pad_token_id,
-                                                                IGNORE_TOKEN_ID = -100,
-                                                                padding=padding):
-                    if filter_null:
-                        if np.sum(qa_inputs['labels']!=-100)<=1:
-                            continue
-                            
-                    s = sub_divide[0]
-                    e = sub_divide[-2] if len(sub_divide)%2 else sub_divide[-1]
-                    matched = None
-                    if s == divide[0] and e == divide[-2]:
-                        matched = True
-                        si,ei=0,len(divide)//2
-                    else:
-                        si,ei = np.searchsorted(divide,[s,e],side='right')
-                        si = (si-1)//2
-                        ei = (ei-1)//2+1
-                        
-                    qa_inputs.update({'image_ids':pixes,'matched':matched,'siei':(si,ei)})
-                    max_num_patches = max(max_num_patches,sum(num_patches[si:ei]))
-                    max_num_images = max(max_num_images,sum(num_images[si:ei]))
-                    yield qa_inputs
-
-    partition_file = os.path.join(output_dir , "image.info")
-    data = {'pic':[],'rat':[]}
-    for k,v in images_database.items():
-        data['pic'].append(k)
-        data['rat'].append(v[1])
-    data['pic'].append(os.path.abspath(image_path))
-    data['rat'].append(np.array([tokenizer.img_bos_token_id,tokenizer.img_eos_token_id,tokenizer.image_size,max_num_patches,max_num_images]))
-    pyarrow.parquet.write_table(pyarrow.table(data),partition_file)
-    print(f"\nAvailable pictures: {len(data['pic'])-1}")   
 
 def main(args):
     print(args)
@@ -450,14 +531,31 @@ def main(args):
     source_dir=os.path.dirname(source)
     file =os.path.basename(source)
     file_name = os.path.splitext(file)[0]
+    
+    cpus=int(os.cpu_count()*0.8) if args.cores <0 else args.cores
+    
     if os.path.isfile(source):
-        tmp = os.path.join(source_dir,args.tmp)
-        if not os.path.exists(tmp) or args.clean:
-            os.system(f" rm -rf {tmp}") 
-            os.makedirs(tmp)
-            os.system(f"cd {tmp};split -d -a 5 -{args.num_lines_per_partition} ../{file} {file_name}-;cd -;")
+        if args.num_lines_per_partition is not None:
+            tmp = os.path.join(source_dir,args.tmp)
+            if not os.path.exists(tmp) or args.clean:
+                os.system(f" rm -rf {tmp}") 
+                os.makedirs(tmp)
+                os.system(f"cd {tmp};split -d -a 5 -{args.num_lines_per_partition} ../{file} {file_name}-;cd -;")
+            files =[os.path.join(tmp, i) for i in os.listdir(tmp)]
+            cpus=min(len(files),cpus)
+        else:
+            tmp = None
+            with open(source,'r') as f:
+                files = f.readlines()
+            num_samples = len(files)
+            cpus = min((num_samples+args.chunk_size-1)//args.chunk_size,cpus)
+            chunk_size = (num_samples+cpus-1)//cpus
+            files = [(source,i,files[i*chunk_size:(i+1)*chunk_size]) for i in range(cpus)]
     else:
         tmp = source
+        files =[os.path.join(tmp, i) for i in os.listdir(tmp)]
+        cpus=min(len(files),cpus)
+        
     output_dir = args.output if args.output !="" else os.path.join(source_dir,file_name+f"_{os.path.basename(args.tokenizer)}")
     if os.path.exists(output_dir):
         if args.clean:
@@ -465,9 +563,8 @@ def main(args):
             os.system(f" rm -rf {output_dir}/.*.crc")
     else:
         os.makedirs(output_dir)
-    
+
     Pool = ThreadPoolExecutor if args.thread else ProcessPoolExecutor
-    cpus=int(os.cpu_count()*0.8) if args.cores <0 else  args.cores
     print(f"########## begine converting {args.type} data with {cpus} executors.###########" )
     with Pool(max_workers=cpus) as exe:
         func = partial(write_parquet,
@@ -479,9 +576,9 @@ def main(args):
                        compression=args.compress.lower(),
                        stack=args.stack,
                        image_path=args.image_path,
+                       max_pixels=args.max_pixels,
                        padding=args.pad,
                        filter_null=args.filter)
-        files =[os.path.join(tmp, i) for i in os.listdir(tmp)]
         files.sort()
         np.random.shuffle(files)
         list(exe.map(func,files))
@@ -633,7 +730,7 @@ def qwen2_template(tokenizer,**kwargs):
                     width,
                     factor=processor.image_processor.patch_size * processor.image_processor.merge_size,
                     min_pixels=processor.image_processor.min_pixels,
-                    max_pixels=args.max_pixels,
+                    max_pixels=kwargs['max_pixels'],
                 )
             patch_num = len(images)
             grid_h = resized_height // processor.image_processor.patch_size
@@ -651,7 +748,7 @@ def qwen2_template(tokenizer,**kwargs):
         tokenizer.get_video_tokens = partial(get_image_tokens,pad_token='<|video_pad|>')
         tokenizer.img_bos_token_id = tokenizer.convert_tokens_to_ids('<|vision_start|>')
         tokenizer.img_eos_token_id = tokenizer.convert_tokens_to_ids('<|vision_end|>')
-        tokenizer.image_size = args.max_pixels
+        tokenizer.image_size = kwargs['max_pixels']
 
     return tokenizer,ROLE,PREFIX,ADAPT 
 
@@ -863,7 +960,8 @@ if __name__=='__main__':
     parser.add_argument('-t','--type', type=str, default="ft")
     parser.add_argument('-i','--input', type=str, default="data.txt")
     parser.add_argument('-o','--output', type=str, default="")
-    parser.add_argument('-n','--num_lines_per_partition', type=int, default=2**23)
+    parser.add_argument('-n','--num_lines_per_partition', type=int, default=None)
+    parser.add_argument('--chunk_size', type=int, default=16384)
     parser.add_argument('-c','--compress', type=str, default="gzip",choices=('gzip','brotli','snappy','lz4','zstd'))
     parser.add_argument('--batch_size', type=int, default=2**16)
     parser.add_argument('--max_len', type=int, default=2**11)

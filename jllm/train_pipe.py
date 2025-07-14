@@ -459,11 +459,12 @@ def main(args):
 
     args.max_num_patches = 0
     args.max_num_images = 0
-    if os.path.exists(os.path.join(args.train_data,'image.info')):
-        image_info = pyarrow.parquet.read_table(os.path.join(args.train_data,'image.info'))
-        ratios = image_info['rat'].to_numpy().tolist()
-        args.max_num_patches = int(ratios[-1][3])
-        args.max_num_images = int(ratios[-1][4])
+    if os.path.exists(f'{train_data_partitions[0]}-image.info'):
+        for p in train_data_partitions:
+            image_info = pyarrow.parquet.read_table(f'{p}-image.info')
+            ratios = image_info['rat'].to_numpy().tolist()
+            args.max_num_patches = max(int(ratios[-1][3]),args.max_num_patches)
+            args.max_num_images = max(int(ratios[-1][4]),args.max_num_images)
         
     if args.eval_data:
         if os.path.isfile(args.eval_data):
