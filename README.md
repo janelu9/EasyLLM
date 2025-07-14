@@ -45,7 +45,7 @@ python -m jllm.raw2ids \
     --tokenizer Qwen2.5-VL-7B-Instruct \
     -i dataset_vl.jsonl \
     --image_path images \
-    --max_len 32769 \
+    --max_len 32769
 ```
 
 Folder *`images`* stores all the images data.  Format of  *`dataset_vl.jsonl`* is like:
@@ -397,13 +397,21 @@ train_data/
 │   ├── part-00100-xxx.snappy.parquet
 │   ...
 ...
-└── .data_info.crc
+└── data_info.json
 ```
 
-`.data_info.crc` is a necessary file under the folder you should create manually.
+`data_info.json` is a necessary file under the folder you should create manually:
 
 ```shell
-echo '${num_samples} ${max_seq_length} 0 ${max_num_blocks} 2'> train_data/.data_info.crc
+{
+  "num_samples": ${num_samples},
+  "max_len":  ${max_seq_length},
+  "max_num_blocks": ${max_num_blocks},
+  "fields": [
+    "input_ids",
+    "cu_seqlens"
+  ]
+}
 ```
 
 Values of `num_samples` and `max_num_blocks` will be printed at the last of yarn's logs once the spark tasks are completed successfully .

@@ -31,6 +31,7 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 from deepspeed.runtime.pipe import ProcessTopology
 from functools import partial
 import pyarrow.parquet
+import json
 import numpy as np
 import os
 import datetime
@@ -440,17 +441,13 @@ def main(args):
         args.train_data = cached_dir
     train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f))])
     
-    num_train_batch=0
-    seq_len=0
-    block_mask = 0
-    for f in os.listdir(args.train_data):
-        if f[-4:] == '.crc':
-            with open(os.path.join(args.train_data,f))as crc:
-                info=crc.read().split()
-            num_train_batch+=int(info[0])//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
-            seq_len=max(seq_len,int(info[1]))
-            block_mask=max(block_mask,int(info[3]))
-    num_field = int(info[-1])
+    with open(os.path.join(args.train_data,'data_info.json'),'r') as f:
+        data_info = json.load(f)
+        num_train_batch = data_info['num_samples']//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
+        seq_len = data_info['max_len']
+        block_mask = data_info['max_num_blocks']
+        num_field = len(data_info['fields'])
+
     args.block_mask=block_mask if args.block_mask else args.block_mask 
     args.seq_len=seq_len
     if args.force_4k:

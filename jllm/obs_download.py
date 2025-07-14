@@ -109,7 +109,7 @@ def obs_download(rank,world_size,args):
                 for file_path in obs_list_dir(data, recursive=False):
                     if file_path.endswith('/'):
                         os.makedirs(os.path.join('/cache/data',os.path.basename(file_path[:-1])),exist_ok=True)
-                    elif file_path[-4:]=='.crc':
+                    elif file_path[-5:]=='.json':
                         obs_copy(file_path,os.path.join('/cache/data',os.path.basename(file_path)))
                         downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)   
     return downloaded

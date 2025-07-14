@@ -421,8 +421,9 @@ def write_parquet(filename,
     partition_dir = os.path.join(output_dir , file)
     partition_file = os.path.join(partition_dir , f"{file}-%05d{chunk_id}.{compression}.parquet")
     check_file = os.path.join(output_dir , f".{file}{chunk_id}.crc")
+    file_id = f"{os.path.dirname(filename)}/{file}{chunk_id}"
     if os.path.exists(check_file):
-        print(f"{os.path.dirname(filename)}/{file}{chunk_id} converted, continue!")
+        print(f"{file_id} converted, continue!")
         return
 
     if dtype == 'ft':
@@ -519,9 +520,10 @@ def write_parquet(filename,
                                         partition_file % (p), 
                                         compression=compression)
     del data_batch                                
-    os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
-    print(f"{os.path.dirname(filename)}/{file}{chunk_id} stored in parquet with {i+1} samples")
+    # os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
+    print(f"{file_id} stored in parquet with {i+1} samples")
     gc.collect()
+    return {file_id:{'num_samples':i+1,'max_len':max_seq_len,'num_samples_per_file':batch_size,'max_num_blocks':max_num_blocks,'fields':list(data.keys())}}
 
 def main(args):
     print(args)
@@ -581,7 +583,21 @@ def main(args):
                        filter_null=args.filter)
         files.sort()
         np.random.shuffle(files)
-        list(exe.map(func,files))
+        data_infos = list(exe.map(func,files))
+    num_samples = 0
+    max_len = 0
+    max_num_blocks = 0
+    fields = set()
+    data_json = {}
+    for data_info in data_infos:
+        k,v =  next(iter(data_info.items()))
+        num_samples = num_samples+v['num_samples']
+        max_len = max(v['max_len'],max_len)
+        max_num_blocks = max(v['max_num_blocks'],max_num_blocks)
+        fields.update(v['fields'])
+        data_json.update(data_info)
+    data_json.update({'num_samples':num_samples,'max_len':max_len,'max_num_blocks':max_num_blocks,'fields':list(fields)})
+    with open(os.path.join(output_dir,'data_info.json'),'w')as f:json.dump(data_json,f,indent=2)
     if tmp != source: os.system(f" rm -rf {tmp}") 
     print(f"{source} has been converted into {output_dir} successfully!")
     '''
