@@ -440,13 +440,17 @@ def main(args):
         torch.distributed.barrier()
         args.train_data = cached_dir
     train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f))])
-    
-    with open(os.path.join(args.train_data,'data_info.json'),'r') as f:
-        data_info = json.load(f)
-        num_train_batch = data_info['num_samples']//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
-        seq_len = data_info['max_len']
-        block_mask = data_info['max_num_blocks']
-        num_field = len(data_info['fields'])
+    num_train_batch = 0
+    seq_len = 0
+    block_mask = 0
+    for file in os.listdir(args.train_data):
+        if file.endswith('info.json'):
+            with open(os.path.join(args.train_data,file),'r') as f:
+                data_info = json.load(f)
+                num_train_batch += data_info['num_samples']//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
+                seq_len = max(data_info['max_len'],seq_len)
+                block_mask = max(data_info['max_num_blocks'],block_mask)
+    num_field = len(data_info['fields'])
 
     args.block_mask=block_mask if args.block_mask else args.block_mask 
     args.seq_len=seq_len
