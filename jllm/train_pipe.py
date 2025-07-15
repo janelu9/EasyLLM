@@ -439,7 +439,7 @@ def main(args):
             write_parquet(args.train_data,cached_dir,args.model,MAX_SEQ_LENGTH=args.seq_len)
         torch.distributed.barrier()
         args.train_data = cached_dir
-    train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f))])
+    train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f)) and not f.startswith('.')])
     num_train_batch = 0
     seq_len = 0
     block_mask = 0

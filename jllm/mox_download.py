@@ -76,7 +76,7 @@ def obs_download(rank,world_size,args):
                 if file[-5:] in {'.json','.info'}:
                     mox.file.copy(os.path.join(data,file),os.path.join('/cache/data',file))
                     downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
-                else:
+                elif not file.startswith('.'):
                     os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
     return downloaded
 

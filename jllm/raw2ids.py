@@ -121,7 +121,7 @@ def pretrain_stack(iteritems,tokenizer,MAX_SEQ_LENGTH,**kwargs):
         input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
         yield {'input_ids':np.array(input_ids,dtype=np.int32),'cu_seqlens':np.array(cu_seqlens,dtype=np.int32)}
 
-def pretrain_pad(iteritems,tokenizer,MAX_SEQ_LENGTH,**kwargs):
+def pretrain_dynamic(iteritems,tokenizer,MAX_SEQ_LENGTH,**kwargs):
     for bos,doc,eos in iteritems:
         ids = []
         if bos:
@@ -138,8 +138,8 @@ def pretrain_pad(iteritems,tokenizer,MAX_SEQ_LENGTH,**kwargs):
                 yield {'input_ids':np.array(input_ids,dtype=np.int32)}
             p += MAX_SEQ_LENGTH-OVERLAPPING_LENGTH
             
-        if 1<l<MAX_SEQ_LENGTH:
-            input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
+        if 2<l:
+            # input_ids.extend([tokenizer.pad_token_id]*(MAX_SEQ_LENGTH-l))
             yield {'input_ids':np.array(input_ids,dtype=np.int32)}
     
 def finetune_generator(file):
@@ -443,7 +443,7 @@ def write_parquet(filename,
         if stack:
             item_iter = pretrain_stack(generator,tokenizer,MAX_SEQ_LENGTH)
         else:
-            item_iter = pretrain_pad(generator,tokenizer,MAX_SEQ_LENGTH)
+            item_iter = pretrain_dynamic(generator,tokenizer,MAX_SEQ_LENGTH)
         
     os.makedirs(partition_dir,exist_ok=True)
     max_seq_len = 0
@@ -515,12 +515,12 @@ def write_parquet(filename,
                 data_batch={k:[] for k in data}
                 element_num = 0
         pbar.close()       
-        if data_batch[k] :
+        if data_batch[k]:
             pyarrow.parquet.write_table(pyarrow.table(data_batch),
                                         partition_file % (p), 
                                         compression=compression)
     del data_batch                                
-    # os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
+    os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
     print(f"{file_id} stored in parquet with {i+1} samples")
     gc.collect()
     return {file_id:{'num_samples':i+1,'max_len':max_seq_len,'num_samples_per_file':batch_size,'max_num_blocks':max_num_blocks,'fields':list(data.keys())}}
@@ -597,7 +597,7 @@ def main(args):
         fields.update(v['fields'])
         data_json.update(data_info)
     data_json.update({'num_samples':num_samples,'max_len':max_len,'max_num_blocks':max_num_blocks,'fields':list(fields)})
-    with open(os.path.join(output_dir,'data_info.json'),'w')as f:json.dump(data_json,f,indent=2)
+    with open(os.path.join(output_dir,f'{file_name}_info.json'),'w')as f:json.dump(data_json,f,indent=2)
     if tmp != source: os.system(f" rm -rf {tmp}") 
     print(f"{source} has been converted into {output_dir} successfully!")
     '''
