@@ -596,7 +596,11 @@ def main(args):
         max_num_blocks = max(v['max_num_blocks'],max_num_blocks)
         fields.update(v['fields'])
         data_json.update(data_info)
-    data_json.update({'num_samples':num_samples,'max_len':max_len,'max_num_blocks':max_num_blocks,'fields':list(fields)})
+    data_json.update({'num_samples':num_samples,
+                      'max_len':max_len,
+                      'num_samples_per_file':args.batch_size,
+                      'max_num_blocks':max_num_blocks,
+                      'fields':list(fields)})
     with open(os.path.join(output_dir,f'{file_name}_info.json'),'w')as f:json.dump(data_json,f,indent=2)
     if tmp != source: os.system(f" rm -rf {tmp}") 
     print(f"{source} has been converted into {output_dir} successfully!")
