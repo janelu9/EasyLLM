@@ -17,6 +17,8 @@ Training Large Language Model faster, easily and low-cost.
 ## Installation
 
 ```shell
+git clone --depth 1 https://github.com/janelu9/EasyLLM.git
+cd EasyLLM
 pip wheel -e . --no-deps && pip install jllm-*-py3-none-any.whl
 ```
 
