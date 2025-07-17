@@ -158,7 +158,8 @@ def rlhf(rows,tokenizer,MAX_SEQ_LENGTH,
     # rows = json.loads(rows)
     labels  = np.array([rows.pop(0)],dtype=np.int32)
     msgs = (PREFIX + rows) if 'system' not in rows[0] else rows
-    msgs.append({'assistant':''})
+    if 'assistant' not in rows[-1]:
+        msgs.append({'assistant':''})
     ids = []
     for start,msg in enumerate(msgs):
         k,v = next(iter(msg.items()))
