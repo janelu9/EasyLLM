@@ -144,6 +144,7 @@ def init_vllm(address,
     
     model_size = tensor_parallel_size*pipeline_parallel_size
     num_engines = gpus//model_size
+    actor_pool = []
     for i in range(num_engines):
         vllm_actor = ray.remote(
             num_cpus=0,
@@ -163,8 +164,34 @@ def init_vllm(address,
             bundle_indices=None if NPU else list(range(i*model_size,(i+1)*model_size)),
         )
         ray.get(vllm_actor.collective_rpc.remote("report_device_id"))
-    return vllm_actor
+        actor_pool.append(vllm_actor)
+    return actor_pool
+    
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List, Dict, Any
+from vllm.inputs import TokensPrompt
+from vllm import SamplingParams
 
+app = FastAPI()
+
+class GenerationRequest(BaseModel):
+    rank: int = 0
+    prompts: List[List[int]] = [[]]
+    sampling_params: Dict[str, Any] = {}
+    
+@app.post("/generate")
+async def generate(request: GenerationRequest):
+    token_prompts = [TokensPrompt(prompt_token_ids=p) for p in request.prompts]
+    actor = actor_pool[request.rank]
+    outputs = ray.get(actor.generate.remote(
+                      prompts=token_prompts,
+                      sampling_params=SamplingParams(**request.sampling_params)))
+    text = [oi.text for o in outputs for oi in o.outputs]
+    token_ids = [oi.token_ids for o in outputs for oi in o.outputs]
+    return JSONResponse({'text':text,'token_ids':token_ids})
+    
 if __name__=='__main__':
     import argparse
     parser = argparse.ArgumentParser(description='vllm')
@@ -213,8 +240,8 @@ if __name__=='__main__':
     args.model=os.path.abspath(args.model)
     from vllm.utils import get_ip
     ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
-    try:
-        actor=init_vllm(f"{ray_ip}:{args.ray_port}",
+    # try:
+    actor_pool=init_vllm(f"{ray_ip}:{args.ray_port}",
                         args.model,
                         gpu_memory_utilization=args.vllm_mem,
                         tensor_parallel_size=args.vllm_tp,
@@ -222,8 +249,10 @@ if __name__=='__main__':
                         gpus=args.ray_gpus,
                         max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.max_prefill_len,
                         max_model_len =args.max_new_tokens+args.max_prefill_len)
-        import time
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        ray.shutdown()
+    import uvicorn
+    uvicorn.run(app, host=ray_ip, port=8000)
+        # import time
+        # while True:
+            # time.sleep(3600)
+    # except KeyboardInterrupt:
+        # ray.shutdown()

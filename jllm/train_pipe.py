@@ -521,7 +521,7 @@ def main(args):
     else:
         spu.seqlens = None
         config.seq_len = args.seq_len-1 # (args.seq_len-1+args.sequence_parallel_size-1)//args.sequence_parallel_size+1
-
+    args.seq_len = config.seq_len
     if hasattr(config,'num_experts_per_tok'):
         config.split_dlayer = True
         if not hasattr(config,'partition_method') or len(config.partition_method)!=args.pipe_parallel_size+1:
@@ -565,14 +565,15 @@ def main(args):
     if args.rlhf:
         from jllm import rlhf
         from vllm.utils import get_ip
-        ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
+        args.ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
         dp_rank = topo.get_coord(rank=args.global_rank).data
+        args.vllm_engine_rank = dp_rank%args.num_vllm_engines
         if args.isolated_vllm:
-            rlhf.connect_vllm_actor(f"{ray_ip}:{args.ray_port}",dp_rank%args.num_vllm_engines)
+            rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_rank)
         else:
             from jllm.vllm import init_vllm
             if args.global_rank==0:
-                vllm_actor = init_vllm(f"{ray_ip}:{args.ray_port}",
+                vllm_actor = init_vllm(f"{args.ray_ip}:{args.ray_port}",
                                        args.model,
                                        gpu_memory_utilization=args.vllm_mem,
                                        tensor_parallel_size=args.vllm_tp,
@@ -584,7 +585,7 @@ def main(args):
             torch.distributed.barrier()
             if args.global_rank!=0:
                 args.num_vllm_engines = args.ray_gpus//vllm_tp//vllm_tp
-                rlhf.connect_vllm_actor(f"{ray_ip}:{args.ray_port}",dp_rank%args.num_vllm_engines)
+                rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_rank)
     
     if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2:
         if args.device == 'npu':
