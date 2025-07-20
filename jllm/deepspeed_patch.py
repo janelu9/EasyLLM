@@ -74,6 +74,56 @@ def check_ckpt_list(self):
 SDLoaderBase.check_ckpt_list = check_ckpt_list
 
 from jllm.train_pipe import args
+if args.rlhf:
+    from deepspeed.runtime.bf16_optimizer import get_global_norm_of_tensors,get_norm_with_moe_layers,clip_tensors_by_global_norm
+    from deepspeed.runtime import bf16_optimizer
+    @torch.no_grad()
+    def step(self, closure=None):
+        if closure is not None:
+            raise NotImplementedError(f'{self.__class__} does not support closure.')
+
+        non_expert_grads_for_norm, expert_grads_for_norm = self.get_grads_for_norm()
+        non_expert_groups_norm = get_global_norm_of_tensors(input_tensors=non_expert_grads_for_norm,
+                                                            mpu=self.mpu,
+                                                            norm_type=self.norm_type,
+                                                            use_graph=self.graph_harvesting)
+        all_groups_norm = non_expert_groups_norm
+        if self.has_moe_layers:
+            all_groups_norm = get_norm_with_moe_layers(non_expert_groups_norm,
+                                                       mpu=self.mpu,
+                                                       expert_tensors=expert_grads_for_norm,
+                                                       norm_type=self.norm_type)
+
+        self._global_grad_norm = all_groups_norm
+
+        assert all_groups_norm >= 0.
+        if self.clip_grad > 0.:
+            clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),
+                                        max_norm=self.clip_grad,
+                                        global_norm=all_groups_norm,
+                                        mpu=self.mpu,
+                                        use_graph=self.graph_harvesting)
+
+        for param_partition, grad_partition in zip(self.fp32_groups_flat_partition,
+                                                   self.fp32_groups_gradient_flat_partition):
+            # In case of grad acc dtype different than FP32, need to cast to high precision.
+            param_partition.grad = grad_partition.to(
+                param_partition.dtype) if grad_partition.dtype != param_partition.dtype else grad_partition
+
+        self.optimizer.step()
+
+        if self.grad_acc_dtype is not torch.float32:
+            for param_partition in self.fp32_groups_flat_partition:
+                param_partition.grad = None
+
+        # We need to link optimizer state after the first step() call
+        self._lazy_init_hp_params_optimizer_state()
+
+        self.update_lp_params()
+
+        self.clear_hp_grads()
+    bf16_optimizer.BF16_Optimizer.step = step
+
 if args.expert_parallel_size>1:
     from deepspeed.moe import layer
     from deepspeed.runtime import engine
