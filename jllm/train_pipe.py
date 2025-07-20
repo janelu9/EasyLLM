@@ -414,6 +414,7 @@ def main(args):
     assert args.world_size % (args.pipe_parallel_size * args.tensor_parallel_size) == 0
     args.data_parallel_size = args.world_size // (args.pipe_parallel_size * args.tensor_parallel_size)
     assert args.data_parallel_size%args.sequence_parallel_size==0
+    assert args.rlhf or (not args.rlhf and args.micro_batch_size==1)
     
     if args.global_batch_size is not None:
         args.gradient_accumulation_steps = max(args.global_batch_size//args.micro_batch_size//args.data_parallel_size,1)
@@ -614,7 +615,6 @@ def main(args):
                                               async_tensor_model_parallel_allreduce=args.async_tensor_model_parallel_allreduce
                                              )
         parallel_state.set_aux_loss_alpha(args.aux_loss_alpha)
-        parallel_config.batch_size = args.micro_batch_size
         parallel_config.seq_length = config.seq_len
         parallel_config.max_num_patches = args.max_num_patches
         parallel_config.padding_rate = args.padding_rate
