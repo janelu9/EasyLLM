@@ -74,7 +74,7 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --pipe_parallel_size 16 \
     --tensor_parallel_size 8 \
     --expert_parallel_size 2 \
-    --per_device_train_batch_size 1 \
+    --micro_batch_size 1 \
     --global_batch_size 256 \
     --partition_method 9,5 \
     --split_dlayer \
@@ -95,7 +95,7 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --pipe_parallel_size 4 \
     --tensor_parallel_size 4 \
     --encoder_pipe_parallel_size 2 \
-    --per_device_train_batch_size 1 \
+    --micro_batch_size 1 \
     --global_batch_size 64 \
     --only_ckpt_model \
     --max_num_checkpoints 2 \
@@ -176,7 +176,7 @@ deepspeed --module jllm.train_pipe \
     --train_data dataset0_Qwen2.5-7B-Instruct \
     --pipe_parallel_size 7 \
     --tensor_parallel_size 1 \
-    --per_device_train_batch_size 1 \
+    --micro_batch_size 4 \
     --global_batch_size 32 \
     --partition_method mem \
     --split_dlayer \

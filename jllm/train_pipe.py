@@ -136,7 +136,7 @@ parser.add_argument('--num_train_epochs',
                     type=int,
                     default=1,
                     help='train epochs')
-parser.add_argument('--per_device_train_batch_size',
+parser.add_argument('--micro_batch_size',
                     type=int,
                     default=1,
                     help='per device train batch_size')
@@ -416,17 +416,9 @@ def main(args):
     assert args.data_parallel_size%args.sequence_parallel_size==0
     
     if args.global_batch_size is not None:
-        args.gradient_accumulation_steps = max(args.global_batch_size//args.per_device_train_batch_size//args.data_parallel_size,1)
-    args.global_batch_size = args.per_device_train_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
+        args.gradient_accumulation_steps = max(args.global_batch_size//args.micro_batch_size//args.data_parallel_size,1)
+    args.global_batch_size = args.micro_batch_size*args.data_parallel_size*args.gradient_accumulation_steps
 
-    train_ds_config = get_train_ds_config
-    if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
-    ds_config = train_ds_config(offload=False,stage=args.zero_stage,)
-    ds_config[
-        'train_micro_batch_size_per_gpu'] = args.per_device_train_batch_size
-    ds_config[
-        'train_batch_size'] = args.global_batch_size//args.sequence_parallel_size
-    ds_config['steps_per_print'] = args.steps_per_print
     set_random_seed(args.seed)
     
     if args.checkpoint: 
@@ -447,7 +439,7 @@ def main(args):
         if file.endswith('info.json'):
             with open(os.path.join(args.train_data,file),'r') as f:
                 data_info = json.load(f)
-                num_train_batch += data_info['num_samples']//args.per_device_train_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
+                num_train_batch += data_info['num_samples']//args.micro_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
                 seq_len = max(data_info['max_len'],seq_len)
                 block_mask = max(data_info['max_num_blocks'],block_mask)
     num_field = len(data_info['fields'])
@@ -563,6 +555,10 @@ def main(args):
     args.seed = args.seed + topo.get_coord(args.global_rank).pipe
     
     if args.rlhf:
+        assert args.num_generations//args.sequence_parallel_size%args.micro_batch_size == 0
+        assert (args.gradient_accumulation_steps*args.micro_batch_size)%(args.num_generations//args.sequence_parallel_size)==0
+        num_train_batch = num_train_batch*args.num_generations
+        config.micro_batch_size=args.micro_batch_size
         from jllm import rlhf
         from vllm.utils import get_ip
         args.ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
@@ -586,7 +582,17 @@ def main(args):
             if args.global_rank!=0:
                 args.num_vllm_engines = args.ray_gpus//vllm_tp//vllm_tp
                 rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_rank)
+
+    train_ds_config = get_train_ds_config
+    if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
+    ds_config = train_ds_config(offload=False,stage=args.zero_stage,)
     
+    ds_config[
+        'train_micro_batch_size_per_gpu'] = args.micro_batch_size
+    ds_config[
+        'train_batch_size'] = args.global_batch_size//args.sequence_parallel_size
+    ds_config['steps_per_print'] = args.steps_per_print
+
     if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2:
         if args.device == 'npu':
             import jllm.ascend
@@ -608,7 +614,7 @@ def main(args):
                                               async_tensor_model_parallel_allreduce=args.async_tensor_model_parallel_allreduce
                                              )
         parallel_state.set_aux_loss_alpha(args.aux_loss_alpha)
-        parallel_config.batch_size = args.per_device_train_batch_size
+        parallel_config.batch_size = args.micro_batch_size
         parallel_config.seq_length = config.seq_len
         parallel_config.max_num_patches = args.max_num_patches
         parallel_config.padding_rate = args.padding_rate
