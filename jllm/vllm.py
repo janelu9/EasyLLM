@@ -23,7 +23,7 @@ class WorkerExtension:
     def report_device_id(self) -> str:
         from vllm.platforms import current_platform
         from vllm.distributed import parallel_state as mpu
-        self.device_uuid = str(self.device) if NPU else current_platform.get_device_uuid(self.device.index) 
+        self.device_uuid = '1' if NPU else current_platform.get_device_uuid(self.device.index) 
         self.tp_size = mpu.get_tensor_model_parallel_world_size()
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_size = mpu.get_pp_group().world_size
@@ -35,7 +35,6 @@ class WorkerExtension:
         return self.pp_size
     
     def report_pp_rank_of_global_rank_in_vllm(self, device_uuid):
-        from vllm.distributed.parallel_state import get_world_group
         if device_uuid == self.device_uuid:
             return self.pp_rank
         return -1
@@ -72,7 +71,7 @@ class WorkerExtension:
                 master_port,
                 rank,
                 world_size,
-                self.device,
+                torch.cuda.current_device(),
             )
 
     def update_weight_by_nccl(self,
