@@ -5,6 +5,10 @@ _SEQUENCE_PARALLEL_WORLD_SIZE = None
 _SEQUENCE_PARALLEL_GLOBAL_RANKS = None
 _SEQUENCE_PARALLEL_RANK = None
 
+REWARD_SCORE = None
+def get_reward():
+    return REWARD_SCORE
+
 def initialize_sequence_parallel(data_parallel_size, pipeline_model_parallel_size, tensor_model_parallel_size,sequence_parallel_size):
     data_parallel_size = data_parallel_size//sequence_parallel_size
     assert torch.distributed.is_initialized()

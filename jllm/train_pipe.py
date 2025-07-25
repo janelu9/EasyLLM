@@ -387,7 +387,19 @@ parser.add_argument("--temperature",
 parser.add_argument("--repetition_penalty",
                     type=float,
                     default=1,
-                    help="repetition penalty")           
+                    help="repetition penalty")
+parser.add_argument("--epsilon_low",
+                    type=float,
+                    default=0.2,
+                    help="epsilon_low")
+parser.add_argument("--epsilon_high",
+                    type=float,
+                    default=0.2,
+                    help="epsilon_high")
+parser.add_argument("--beta",
+                    type=float,
+                    default=0.01,
+                    help="beta")   
                
 parser = deepspeed.add_config_arguments(parser)
 args=parser.parse_args()
@@ -496,9 +508,9 @@ def main(args):
     config.rlhf=args.rlhf
     config.num_generations = args.num_generations
     config.max_new_tokens = args.max_new_tokens
-    config.reward_func = args.reward_func
-    config.top_p = args.top_p
-    config.repetition_penalty = args.repetition_penalty
+    # config.reward_func = args.reward_func
+    # config.top_p = args.top_p
+    # config.repetition_penalty = args.repetition_penalty
     config.temperature = args.temperature
     
     if args.sequence_parallel_size>1: # adaptive sequence length for computation balancing
@@ -559,7 +571,10 @@ def main(args):
         assert args.num_generations//args.sequence_parallel_size%args.micro_batch_size == 0
         assert (args.gradient_accumulation_steps*args.micro_batch_size)%(args.num_generations//args.sequence_parallel_size)==0
         num_train_batch = num_train_batch*args.num_generations
-        config.micro_batch_size=args.micro_batch_size
+        config.micro_batch_size = args.micro_batch_size
+        config.epsilon_low = args.epsilon_low
+        config.epsilon_high = args.epsilon_high
+        config.beta = args.beta
         from jllm import rlhf
         from vllm.utils import get_ip
         args.ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
