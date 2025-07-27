@@ -4,15 +4,19 @@ Training Large Language Model faster, easily and low-cost.
 
 ✦ Both GPU and NPU are supported.
 
-✦ Directly training on whole big data write by Spark when pretrain.
+✦ Directly training on whole big data of token ids converted by PySpark when pretrain.
 
 ✦ Flash speed when fine-tuning because of  no redundant computation .
 
-✦ Make PCIE as fast as NVlinks under 20 billion level model.
+✦ Make PCIE as fast as NVLinks under 20 billion level model.
 
 ✦ Minimalist implementation of Sequence Parallelism (4D Parallelism for extra long context).
 
-✦ High performance of  Visual Language Model, Mixture of Experts and Reinforcement Learning.
+✦ High performance of  Visual Language Model‘s full parameter fine-tuning.
+
+✦ Big Expert Parallel and dynamic experts balance when Mixture of Experts training.
+
+✦ Asynchronous inference and training of Reinforcement Learning.
 
 ## Installation
 
@@ -153,44 +157,78 @@ def reward_func(index, text=None, token_ids=None):
     return scores
 ```
 
-2. Start a vLLM cluster.
+2. Start a inference engine and the grpo training task according to node rank.
 
 ```shell
-CUDA_VISIBLE_DEVICES=7 ray start --head --port 6380
-python -m jllm.vllm --model Qwen2.5-7B-Instruct \
-	--max_prefill_len 128 \
-    --num_generations 4 \
-    --max_new_tokens 64 \
-    --vllm_tp 1 \
-    --ray_gpus 1 \
-    --vllm_mem 0.8 
-```
+GPUS_PER_NODE=8
+MASTER_ADDR='ip of first node'
+MASTER_PORT=6000
+RAY_ADDR='ip of last node'
+LAST_RANK=$((NUM_NODES - 1))
 
-3. Train:
+if [[ $NODE_RANK -eq $LAST_RANK ]]; then
+    echo "Starting inference node (Rank $NODE_RANK)"
+    ray start --head --port 6380
+    python -m jllm.vllm --model Qwen3-32B \
+        --max_prefill_len 2048 \
+        --num_generations 32 \
+        --max_new_tokens 2048 \
+        --vllm_tp 8 \
+        --ray_gpus 8 \
+        --vllm_mem 0.8
+else
+    echo "Starting training node (Rank $NODE_RANK)"
+    echo "Waiting for inference node to start..."
+    
+    timeout=600
+    while ! nc -z $RAY_ADDR 8000; do
+        sleep 1
+        ((timeout--))
+        [[ $timeout -le 0 ]] && echo "Timeout waiting for inference node!" && exit 1
+    done
+    
+    ray start --address="$RAY_ADDR:6380" \
+              --num-gpus=0 \
+              --num-cpus=1 \
+              --memory=$((1 * 1024**3)) \
+              --object-store-memory=$((4 * 1024**3)) \
+              --resources='{"NPU":0}'
 
-```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
-deepspeed --module jllm.train_pipe \
-    --model Qwen2.5-7B-Instruct \
-    --num_train_epochs 2 \
-    --train_data dataset0_Qwen2.5-7B-Instruct \
-    --pipe_parallel_size 7 \
-    --tensor_parallel_size 1 \
-    --micro_batch_size 4 \
-    --global_batch_size 32 \
-    --partition_method mem \
-    --split_dlayer \
-    --only_ckpt_model \
-    --max_num_checkpoints 2 \
-    --learning_rate 1e-5 \
-    --checkpoint checkpoint \
-    --checkpoint_grad_interval 4 \
-    --rlhf \
-    --num_generations 4 \
-    --max_new_tokens 64 \
-    --vllm_sync_stage 1 \
-    --reward_func reward.py \
-    --isolated_vllm
+    TRAIN_NODES=$((NUM_NODES - 1))
+    WORLD_SIZE=$((GPUS_PER_NODE * TRAIN_NODES))
+    DISTRIBUTED_ARGS=(
+        --nproc_per_node $GPUS_PER_NODE
+        --nnodes $TRAIN_NODES
+        --node_rank $NODE_RANK
+        --master_addr $MASTER_ADDR
+        --master_port $MASTER_PORT
+    )
+
+    echo "Starting training with $TRAIN_NODES nodes"
+    torchrun "${DISTRIBUTED_ARGS[@]}" \
+        -m jllm.train_pipe \
+        --model Qwen3-32B \
+        --num_train_epochs 2 \
+        --train_data rlhf_Qwen3-32B \
+        --pipe_parallel_size 4 \
+        --tensor_parallel_size 8 \
+        --micro_batch_size 2 \
+        --global_batch_size 2048 \
+        --partition_method mem \
+        --split_dlayer \
+        --only_ckpt_model \
+        --max_num_checkpoints 2 \
+        --learning_rate 1e-5 \
+        --checkpoint checkpoint \
+        --checkpoint_grad_interval 4 \
+        --rlhf \
+        --num_generations 32 \
+        --max_new_tokens 2048 \
+        --vllm_sync_stage 1 \
+        --ray_ip $RAY_ADDR \
+        --reward_func reward.py \
+        --isolated_vllm
+fi
 ```
 
 ### Checkpoint Conversion
