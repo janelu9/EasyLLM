@@ -416,10 +416,10 @@ def write_parquet(filename,
         chunk_id = f'-chunk-{chunk_id:02d}'
     else:
         contents = filename
-        chunk_id = ''
+        chunk_id = '-chunk-00'
         
     file = os.path.splitext(os.path.basename(filename))[0]
-    partition_dir = os.path.join(output_dir , file)
+    partition_dir = output_dir #os.path.join(output_dir , file)
     partition_file = os.path.join(partition_dir , f"{file}-%05d{chunk_id}.{compression}.parquet")
     check_file = os.path.join(output_dir , f".{file}{chunk_id}.crc")
     file_id = f"{os.path.dirname(filename)}/{file}{chunk_id}"
@@ -437,7 +437,7 @@ def write_parquet(filename,
                             padding=padding,
                             filter_null=filter_null,
                             image_path=image_path,
-                            output_dir = partition_dir,
+                            output_dir = os.path.join(output_dir , file),
                             )
     else:
         generator = pretrain_generator(contents)
@@ -446,7 +446,7 @@ def write_parquet(filename,
         else:
             item_iter = pretrain_dynamic(generator,tokenizer,MAX_SEQ_LENGTH)
         
-    os.makedirs(partition_dir,exist_ok=True)
+    # os.makedirs(partition_dir,exist_ok=True)
     max_seq_len = 0
     max_num_blocks = 0
     if not auto_batch_size:

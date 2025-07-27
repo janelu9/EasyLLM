@@ -328,19 +328,15 @@ Firstly, move all the datasets stored in parquet folders into one directory. suc
 ```shell
 datasets
 ├── dataset0_DeepSeek-R1
-│   ├── dataset0-00000
-│   │   ├── dataset0-00000-00000.gzip.parquet
-│   │   └── dataset0-00000-00001.gzip.parquet
-│   └── dataset0-00001
-│       ├── dataset0-00001-00000.gzip.parquet
-│       └── dataset0-00001-00001.gzip.parquet
+│   ├── dataset0-00000-00000.gzip.parquet
+│   ├── dataset0-00000-00001.gzip.parquet
+│   ├── dataset0-00001-00000.gzip.parquet
+│   └── dataset0-00001-00001.gzip.parquet
 └── dataset1_DeepSeek-R1
-    ├── dataset1-00000
-    │   ├── dataset1-00000-00000.gzip.parquet
-    │   └── dataset1-00000-00001.gzip.parquet
-    └── dataset1-00001
-        ├── dataset1-00001-00000.gzip.parquet
-        └── dataset1-00001-00001.gzip.parquet
+    ├── dataset1-00000-00000.gzip.parquet
+    ├── dataset1-00000-00001.gzip.parquet
+    ├── dataset1-00001-00000.gzip.parquet
+    └── dataset1-00001-00001.gzip.parquet
 ```
 
 Then run the following command to shuffle the rows inner each dataset and distribute them to new blocks, `num_block` is recommended to be the multiple of next step's repartition number.
@@ -353,50 +349,21 @@ Every dataset would be shuffled and placed in `shuffled_datasets` with several t
 
 ```shell
 shuffled_datasets/
-├── dataset0_DeepSeek-R1-00000
-│   ├── dataset0_DeepSeek-R1-00000-00000.gzip.parquet
-│   ├── dataset0_DeepSeek-R1-00000-00001.gzip.parquet
-│   ├── dataset0_DeepSeek-R1-00000-00002.gzip.parquet
-│   └── dataset0_DeepSeek-R1-00000-00003.gzip.parquet
-└── dataset1_DeepSeek-R1-00000
-    ├── dataset1_DeepSeek-R1-00000-00000.gzip.parquet
-    ├── dataset1_DeepSeek-R1-00000-00001.gzip.parquet
-    ├── dataset1_DeepSeek-R1-00000-00002.gzip.parquet
-    └── dataset1_DeepSeek-R1-00000-00003.gzip.parquet
+├── dataset0_DeepSeek-R1-00000-00000.gzip.parquet
+├── dataset0_DeepSeek-R1-00000-00001.gzip.parquet
+├── dataset0_DeepSeek-R1-00000-00002.gzip.parquet
+├── dataset0_DeepSeek-R1-00000-00003.gzip.parquet
+├── dataset1_DeepSeek-R1-00000-00000.gzip.parquet
+├── dataset1_DeepSeek-R1-00000-00001.gzip.parquet
+├── dataset1_DeepSeek-R1-00000-00002.gzip.parquet
+└── dataset1_DeepSeek-R1-00000-00003.gzip.parquet
 ```
-
-#### Repartition
-
-Optional but recommended. 1B token ids in parquet files take up to 2G of hard disk at most but require approximately 10G of CPU memory. Setting `num_partition` according to the CPU memory of each worker.
-
-```shell
-python -m jllm.repartition -d shuffled_datasets -n 4
-```
-
-The datasets will be:
-
-```shell
-shuffled_datasets/
-├── 5984729befe338e6a7-part-00000
-│   ├── dataset0_DeepSeek-R1-00000-00000.gzip.parquet
-│   └── dataset1_DeepSeek-R1-00000-00000.gzip.parquet
-├── 5984729befe338e6a7-part-00001
-│   ├── dataset0_DeepSeek-R1-00000-00001.gzip.parquet
-│   └── dataset1_DeepSeek-R1-00000-00001.gzip.parquet
-├── 5984729befe338e6a7-part-00002
-│   ├── dataset0_DeepSeek-R1-00000-00002.gzip.parquet
-│   └── dataset1_DeepSeek-R1-00000-00002.gzip.parquet
-├── 5984729befe338e6a7-part-00003
-│   ├── dataset0_DeepSeek-R1-00000-00003.gzip.parquet
-│   └── dataset1_DeepSeek-R1-00000-00003.gzip.parquet
-└── data.info
-```
-
-*Note: You can also use **PySpark** to do these steps. jllm could directly read token ids from the parquets those write out by **[Spark]((https://spark.apache.org))** .* 
 
 ### PySpark
 
-Shuffle and convert raw data of `jsonl` to token ids of `parquet` by pyspark.
+You can also use **PySpark** to do these steps. jllm could directly read token ids from the parquets those write out by **[Spark]((https://spark.apache.org))** .
+
+Shuffle and convert raw data of `jsonl` to token ids of `parquet` by pyspark:
 
 ```shell
 tokenizer="DeepSeek-R1"
@@ -433,13 +400,9 @@ Then transport the parquet files to your training cluster's storage. The train d
 
 ```shell
 train_data/
-├── part-0000/
-│   ├── part-00000-xxx.snappy.parquet
+├── part-00000-xxx.snappy.parquet
+└── part-00100-xxx.snappy.parquet
 │   ...
-└── part-0001/
-│   ├── part-00100-xxx.snappy.parquet
-│   ...
-...
 └── data_info.json
 ```
 

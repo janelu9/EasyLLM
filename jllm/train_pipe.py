@@ -56,6 +56,14 @@ parser.add_argument("--eval_data",
                     type=str,
                     default= "",
                     help="data for evalution,jsonl or parqet folder")
+parser.add_argument("--self_partition",
+                    type=str,
+                    default= None,
+                    help="partition strategy")
+parser.add_argument('--num_partitions',
+                    type=int,
+                    default=1,
+                    help='partitions of train datasets')
 parser.add_argument("--img_shm",
                     type=str,
                     default= None,
@@ -444,18 +452,45 @@ def main(args):
             write_parquet(args.train_data,cached_dir,args.model,MAX_SEQ_LENGTH=args.seq_len)
         torch.distributed.barrier()
         args.train_data = cached_dir
-    train_data_partitions = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) if os.path.isdir(os.path.join(args.train_data,f)) and not f.startswith('.')])
-    num_train_batch = 0
-    seq_len = 0
-    block_mask = 0
-    for file in os.listdir(args.train_data):
-        if file.endswith('info.json'):
-            with open(os.path.join(args.train_data,file),'r') as f:
-                data_info = json.load(f)
-                num_train_batch += data_info['num_samples']//args.micro_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
-                seq_len = max(data_info['max_len'],seq_len)
-                block_mask = max(data_info['max_num_blocks'],block_mask)
-    num_field = len(data_info['fields'])
+    
+    if args.self_partition:
+        train_data_partitions = None
+        num_partitions = torch.empty(1,dtype=torch.int32,device=torch.cuda.current_device())
+        if os.path.exists(args.self_partition):
+            with open(args.self_partition,'r') as f:
+                partitions = json.load(f)
+            train_data_partitions = [[os.path.join(args.train_data,pi) for pi in p] for p in partitions]
+            num_partitions[:]=len(train_data_partitions)
+        torch.distributed.broadcast(num_partitions,0)
+        args.num_partitions = num_partitions.item()
+        if train_data_partitions is None:
+            train_data_partitions = list(range(args.num_partitions)) 
+    else:
+        train_data_parquets = sorted([os.path.join(args.train_data,f) for f in os.listdir(args.train_data) \
+                                      if os.path.isfile(os.path.join(args.train_data,f)) and f.endswith('.parquet')])
+        if len(train_data_parquets)>0:
+            num_files_per_partition = (len(train_data_parquets)+args.num_partitions-1)//args.num_partitions
+            train_data_partitions = [train_data_parquets[i*num_files_per_partition:(i+1)*num_files_per_partition] for i in range(args.num_partitions)]
+        else:
+            train_data_partitions = list(range(args.num_partitions))
+
+    if train_data_partitions[0]!=0:
+        num_train_batch = 0
+        seq_len = 0
+        block_mask = 0
+        for file in os.listdir(args.train_data):
+            if file.endswith('info.json'):
+                with open(os.path.join(args.train_data,file),'r') as f:
+                    data_info = json.load(f)
+                    num_train_batch += data_info['num_samples']//args.micro_batch_size//(args.data_parallel_size//args.sequence_parallel_size)
+                    seq_len = max(data_info['max_len'],seq_len)
+                    block_mask = max(data_info['max_num_blocks'],block_mask)
+        num_field = len(data_info['fields'])
+        sync_data_info = torch.tensor([num_train_batch,seq_len,block_mask,num_field],dtype=torch.int64,device=torch.cuda.current_device())
+    else:
+        sync_data_info = torch.empty(4,dtype=torch.int64,device=torch.cuda.current_device())
+    torch.distributed.broadcast(sync_data_info,0)
+    num_train_batch,seq_len,block_mask,num_field = sync_data_info.tolist()
 
     args.block_mask=block_mask if args.block_mask else args.block_mask 
     args.seq_len=seq_len
@@ -465,12 +500,12 @@ def main(args):
 
     args.max_num_patches = 0
     args.max_num_images = 0
-    if os.path.exists(f'{train_data_partitions[0]}-image.info'):
-        for p in train_data_partitions:
-            image_info = pyarrow.parquet.read_table(f'{p}-image.info')
-            ratios = image_info['rat'].to_numpy().tolist()
-            args.max_num_patches = max(int(ratios[-1][3]),args.max_num_patches)
-            args.max_num_images = max(int(ratios[-1][4]),args.max_num_images)
+    for img_info_file in [os.path.join(args.train_data,f) for f in os.listdir(args.train_data)\
+                          if os.path.isfile(os.path.join(args.train_data,f)) and f.endswith('image.info')]:
+        image_info = pyarrow.parquet.read_table(img_info_file)
+        ratios = image_info['rat'].to_numpy().tolist()
+        args.max_num_patches = max(int(ratios[-1][3]),args.max_num_patches)
+        args.max_num_images = max(int(ratios[-1][4]),args.max_num_images)
         
     if args.eval_data:
         if os.path.isfile(args.eval_data):
@@ -480,7 +515,8 @@ def main(args):
                 write_parquet(args.eval_data,cached_dir,args.model,MAX_SEQ_LENGTH=args.seq_len)
             torch.distributed.barrier()
             args.eval_data = cached_dir
-        eval_data_partitions = sorted([os.path.join(args.eval_data,f) for f in os.listdir(args.eval_data) if os.path.isdir(os.path.join(args.eval_data,f))])
+        eval_data_partitions = [[os.path.join(args.eval_data,f) for f in os.listdir(args.eval_data) \
+                                 if os.path.isfile(os.path.join(args.eval_data,f)) and f.endswith('.parquet')]]
     
     spu.initialize_sequence_parallel(args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size,args.sequence_parallel_size)
     
@@ -491,7 +527,7 @@ def main(args):
     config.block_mask=args.block_mask
     config.checkpoint_interval = args.checkpoint_grad_interval
     config.checkpoint_grad_step = args.no_checkpoint_grad_step
-    config.num_partitions = args.emb_partitions
+    config.emb_partitions = args.emb_partitions
     config.split_dlayer = args.split_dlayer
     config.device = args.device
     config.pad_one_per_batch=args.pad_one_per_batch
