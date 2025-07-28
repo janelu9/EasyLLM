@@ -360,6 +360,10 @@ parser.add_argument("--ray_port",
                     type=str,
                     default='6380',
                     help="ray's master port.")
+parser.add_argument("--server_port",
+                    type=str,
+                    default='8000',
+                    help="ray's server port.")
 parser.add_argument("--vllm_tp",
                     type=int,
                     default=1,
