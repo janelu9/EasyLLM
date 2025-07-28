@@ -75,6 +75,7 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --model DeepSeek-R1 \
     --num_train_epochs 3 \
     --train_data dataset0_DeepSeek-R1 \
+    --num_partitions 4 \
     --pipe_parallel_size 16 \
     --tensor_parallel_size 8 \
     --expert_parallel_size 2 \
@@ -331,15 +332,17 @@ datasets
 │   ├── dataset0-00000-00000.gzip.parquet
 │   ├── dataset0-00000-00001.gzip.parquet
 │   ├── dataset0-00001-00000.gzip.parquet
-│   └── dataset0-00001-00001.gzip.parquet
+│   ├── dataset0-00001-00001.gzip.parquet
+│   └── dataset0_info.json
 └── dataset1_DeepSeek-R1
     ├── dataset1-00000-00000.gzip.parquet
     ├── dataset1-00000-00001.gzip.parquet
     ├── dataset1-00001-00000.gzip.parquet
-    └── dataset1-00001-00001.gzip.parquet
+    ├── dataset1-00001-00001.gzip.parquet
+    └── dataset1_info.json
 ```
 
-Then run the following command to shuffle the rows inner each dataset and distribute them to new blocks, `num_block` is recommended to be the multiple of next step's repartition number.
+Then run the following command to shuffle the rows inner each dataset and distribute them to new blocks.
 
 ```shell
 python -m jllm.shuffle_datasets -d datasets -o shuffled_datasets -n 4
@@ -356,7 +359,9 @@ shuffled_datasets/
 ├── dataset1_DeepSeek-R1-00000-00000.gzip.parquet
 ├── dataset1_DeepSeek-R1-00000-00001.gzip.parquet
 ├── dataset1_DeepSeek-R1-00000-00002.gzip.parquet
-└── dataset1_DeepSeek-R1-00000-00003.gzip.parquet
+├── dataset1_DeepSeek-R1-00000-00003.gzip.parquet
+├── dataset0..._info.json
+└── dataset1..._info.json
 ```
 
 ### PySpark
@@ -401,7 +406,7 @@ Then transport the parquet files to your training cluster's storage. The train d
 ```shell
 train_data/
 ├── part-00000-xxx.snappy.parquet
-└── part-00100-xxx.snappy.parquet
+├── part-00100-xxx.snappy.parquet
 │   ...
 └── data_info.json
 ```

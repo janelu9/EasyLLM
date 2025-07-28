@@ -106,14 +106,15 @@ def obs_download(rank,world_size,args):
                 obs_copy(data,'/cache/data',True)
                 downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+data)
             elif rank%8==0:
-                for file_path in obs_list_dir(data, recursive=False):
-                    if file_path.endswith('/'):
-                        file = os.path.basename(file_path[:-1])
-                        if not file.startswith('.'):
-                            os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
-                    elif file_path[-5:] in {'.json','.info'}:
-                        obs_copy(file_path,os.path.join('/cache/data',os.path.basename(file_path)))
-                        downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file_path)   
+                os.makedirs('/cache/data',exist_ok=True)
+                # for file_path in obs_list_dir(data, recursive=False):
+                    # if file_path.endswith('/'):
+                        # file = os.path.basename(file_path[:-1])
+                        # if not file.startswith('.'):
+                            # os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
+                    # elif file_path[-5:] in {'.json','.info'}:
+                        # obs_copy(file_path,os.path.join('/cache/data',os.path.basename(file_path)))
+                        # downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file_path)   
     return downloaded
 
 if __name__=='__main__':

@@ -72,12 +72,13 @@ def obs_download(rank,world_size,args):
             mox.file.copy_parallel(data,'/cache/data')
             downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+data)
         elif rank%8==0:
-            for file in mox.file.list_directory(data, recursive=False):
-                if file[-5:] in {'.json','.info'}:
-                    mox.file.copy(os.path.join(data,file),os.path.join('/cache/data',file))
-                    downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
-                elif not file.startswith('.'):
-                    os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
+            os.makedirs('/cache/data',exist_ok=True)
+            # for file in mox.file.list_directory(data, recursive=False):
+                # if file[-5:] in {'.json','.info'}:
+                    # mox.file.copy(os.path.join(data,file),os.path.join('/cache/data',file))
+                    # downloaded.append(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+": "+file)
+                # elif not file.startswith('.'):
+                    # os.makedirs(os.path.join('/cache/data',file),exist_ok=True)
     return downloaded
 
 if __name__=='__main__':
