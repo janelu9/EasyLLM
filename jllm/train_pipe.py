@@ -410,7 +410,7 @@ parser.add_argument("--epsilon_high",
                     help="epsilon_high")
 parser.add_argument("--beta",
                     type=float,
-                    default=0.01,
+                    default=0.02,
                     help="beta")   
                
 parser = deepspeed.add_config_arguments(parser)
