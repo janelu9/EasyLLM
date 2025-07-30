@@ -134,6 +134,7 @@ def init_vllm(address,
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
     
     ray.init(address=address,ignore_reinit_error=True)
+    
     if NPU:
         distributed_executor_backend = 'uni' if tensor_parallel_size==1 else 'mp'
     else:
@@ -172,6 +173,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from vllm.inputs import TokensPrompt
 from vllm import SamplingParams
+import asyncio
 
 app = FastAPI()
 
@@ -184,9 +186,10 @@ class GenerationRequest(BaseModel):
 async def generate(request: GenerationRequest):
     token_prompts = [TokensPrompt(prompt_token_ids=p) for p in request.prompts]
     actor = actor_pool[request.rank]
-    outputs = ray.get(actor.generate.remote(
+    outputs_ref = actor.generate.remote(
                       prompts=token_prompts,
-                      sampling_params=SamplingParams(**request.sampling_params)))
+                      sampling_params=SamplingParams(**request.sampling_params))
+    outputs = await outputs_ref  
     text = [oi.text for o in outputs for oi in o.outputs]
     token_ids = [oi.token_ids for o in outputs for oi in o.outputs]
     return JSONResponse({'text':text,'token_ids':token_ids})
