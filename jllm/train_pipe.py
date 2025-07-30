@@ -619,6 +619,7 @@ def main(args):
         from vllm.utils import get_ip
         args.ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
         dp_rank = topo.get_coord(rank=args.global_rank).data
+        assert args.data_parallel_size>=args.num_vllm_engines
         args.vllm_engine_rank = dp_rank%args.num_vllm_engines
         if args.isolated_vllm:
             rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_rank)
