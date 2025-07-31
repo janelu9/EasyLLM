@@ -186,10 +186,9 @@ class GenerationRequest(BaseModel):
 async def generate(request: GenerationRequest):
     token_prompts = [TokensPrompt(prompt_token_ids=p) for p in request.prompts]
     actor = actor_pool[request.rank]
-    outputs_ref = actor.generate.remote(
+    outputs = await actor.generate.remote(
                       prompts=token_prompts,
-                      sampling_params=SamplingParams(**request.sampling_params))
-    outputs = await outputs_ref  
+                      sampling_params=SamplingParams(**request.sampling_params)) 
     text = [oi.text for o in outputs for oi in o.outputs]
     token_ids = [oi.token_ids for o in outputs for oi in o.outputs]
     return JSONResponse({'text':text,'token_ids':token_ids})
