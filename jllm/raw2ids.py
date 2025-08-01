@@ -404,7 +404,8 @@ def write_parquet(filename,
                   image_path='',
                   max_pixels = 1024**2,
                   padding=False,
-                  filter_null=False):
+                  filter_null=False,
+                  check=False):
     
     tokenizer = AutoTokenizer.from_pretrained(tokenizer,use_fast=True,trust_remote_code=True,add_bos_token = False)
     tokenizer.encode = partial(tokenizer.encode,add_special_tokens=False)
@@ -520,8 +521,9 @@ def write_parquet(filename,
             pyarrow.parquet.write_table(pyarrow.table(data_batch),
                                         partition_file % (p), 
                                         compression=compression)
-    del data_batch                                
-    os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
+    del data_batch
+    if check:
+        os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")
     print(f"{file_id} stored in parquet with {i+1} samples")
     gc.collect()
     return {file_id:{'num_samples':i+1,'max_len':max_seq_len,'num_samples_per_file':batch_size,'max_num_blocks':max_num_blocks,'fields':list(data.keys())}}
@@ -581,7 +583,8 @@ def main(args):
                        image_path=args.image_path,
                        max_pixels=args.max_pixels,
                        padding=args.pad,
-                       filter_null=args.filter)
+                       filter_null=args.filter,
+                       check = args.type != 'ft')
         files.sort()
         np.random.shuffle(files)
         data_infos = list(exe.map(func,files))

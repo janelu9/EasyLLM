@@ -14,9 +14,9 @@ Training Large Language Model faster, easily and low-cost.
 
 ✦ High performance of  Visual Language Model‘s full parameter fine-tuning.
 
-✦ Big Expert Parallel and dynamic experts balance when Mixture of Experts training.
+✦ Low communication and dynamic experts balance when Mixture of Experts training.
 
-✦ Asynchronous inference and training of Reinforcement Learning.
+✦ Flash speed of Reinforcement Learning with optimizations as asynchronous inference and training, etc.
 
 ## Installation
 

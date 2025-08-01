@@ -123,6 +123,28 @@ if args.rlhf:
 
         self.clear_hp_grads()
     bf16_optimizer.BF16_Optimizer.step = step
+    
+    counter = -1
+    group_step =args.num_generations//args.sequence_parallel_size//args.micro_batch_size
+    
+    def backward(self, loss, retain_graph=False, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
+        """Perform a backward pass and copy the low-precision gradients to the
+        high-precision copy.
+
+        We copy/accumulate to the high-precision grads now to prevent accumulating in the
+        bf16 grads after successive backward() calls (i.e., grad accumulation steps > 1)
+
+        The low-precision grads are deallocated during this procedure.
+        """
+        global counter
+        counter = (counter + 1) % group_step
+        self.clear_lp_grads()
+        loss.backward(retain_graph=counter+1<group_step, **bwd_kwargs)
+
+        if update_hp_grads:
+            self.update_hp_grads(clear_lp_grads=clear_lp_grads)
+            
+    bf16_optimizer.BF16_Optimizer.backward = backward
 
 if args.expert_parallel_size>1:
     from deepspeed.moe import layer
