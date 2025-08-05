@@ -277,7 +277,7 @@ python -m jllm.cat2hf \
 |                       Model                        | Training Speed (tokens/s) |
 | :------------------------------------------------: | :-----------------------: |
 |                  qwen3/qwen3-moe                   |             -             |
-| deepseek-v3-671b (includes multi-token prediction) |             -             |
+| deepseek-v3-685b (includes multi-token prediction) |             -             |
 |                     qwen2.5-vl                     |             -             |
 |                      qwen2-vl                      |             -             |
 |                     internvl2                      |             -             |

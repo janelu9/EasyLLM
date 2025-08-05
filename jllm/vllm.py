@@ -28,6 +28,7 @@ class WorkerExtension:
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_size = mpu.get_pp_group().world_size
         self.pp_rank = mpu.get_pp_group().rank_in_group
+        self.ep_rank = mpu.get_ep_group().rank_in_group
         self.model_update_groups={}
         return self.device_uuid
         
@@ -46,7 +47,9 @@ class WorkerExtension:
             tensor = func(*args)
             if self.tp_size>1 and tile:
                 dim = parallel_type(name)
-                if dim==0:
+                if 'shared_experts' in name:
+                    tensor=tensor.chunk(self.tp_size,dim)[self.tp_rank].contiguous()
+                elif dim==0:
                     tensor=tensor.tile(self.tp_size,1) if tensor.dim()==2 else tensor.tile(self.tp_size)
                 elif dim==1:
                     tensor=tensor.tile(1,self.tp_size) if tensor.dim()==2 else tensor.tile(self.tp_size)
@@ -60,10 +63,11 @@ class WorkerExtension:
                                  world_size,
                                  rank_offset=1,
                                  pp_rank_of_global_rank_in_vllm=-1,
-                                 train_tp_rank=0):
+                                 train_tp_rank=0,
+                                 train_ep_rank=0):
         from vllm.distributed.parallel_state import get_world_group
         rank = self.pp_rank
-        if rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
+        if rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank and train_ep_rank==self.ep_rank:
             if rank < pp_rank_of_global_rank_in_vllm or pp_rank_of_global_rank_in_vllm == -1:
                 rank += rank_offset
             self.model_update_groups[global_rank] = stateless_init_process_group(
@@ -79,14 +83,17 @@ class WorkerExtension:
                               name, dtype, shape, 
                               pp_rank_of_global_rank_in_vllm=-1,
                               train_tp_rank=0,
+                              train_ep_rank=0,
                               tile=True):
         from vllm.distributed.parallel_state import get_world_group
-        if self.pp_rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank:
+        if self.pp_rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank and train_ep_rank==self.ep_rank:
             weight = torch.empty(shape, dtype=dtype, device="cuda")
             self.model_update_groups[global_rank].broadcast(weight,src=0,stream=torch.cuda.current_stream())
             if self.tp_size>1 and tile:
                 dim = parallel_type(name)
-                if dim==0:
+                if 'shared_experts' in name:
+                    tensor=tensor.chunk(self.tp_size,dim)[self.tp_rank].contiguous()
+                elif dim==0:
                     weight = weight.tile(self.tp_size,1) if weight.dim()==2 else weight.tile(self.tp_size)
                 elif dim==1:
                     weight = weight.tile(1,self.tp_size) if weight.dim()==2 else weight.tile(self.tp_size)
@@ -105,7 +112,9 @@ class WorkerExtension:
                 tensor = func(*list_args)
                 if self.tp_size>1 and tile:
                     dim = parallel_type(name)
-                    if dim==0:
+                    if 'shared_experts' in name:
+                        tensor=tensor.chunk(self.tp_size,dim)[self.tp_rank].contiguous()
+                    elif dim==0:
                         tensor = tensor.tile(self.tp_size,1) if tensor.dim()==2 else tensor.tile(self.tp_size)
                     elif dim==1:
                         tensor = tensor.tile(1,self.tp_size) if tensor.dim()==2 else tensor.tile(self.tp_size)
@@ -127,6 +136,8 @@ def init_vllm(address,
               gpu_memory_utilization=0.5,
               tensor_parallel_size=1,
               pipeline_parallel_size=1,
+              expert_parallel_size=1,
+              enable_expert_parallel = False,
               gpus=1,
               max_num_batched_tokens=1024,
               max_model_len=1024):
@@ -157,6 +168,8 @@ def init_vllm(address,
             worker_extension_cls="jllm.vllm.WorkerExtension",
             tensor_parallel_size=tensor_parallel_size,
             pipeline_parallel_size=pipeline_parallel_size,
+            data_parallel_size=expert_parallel_size,
+            enable_expert_parallel = enable_expert_parallel,
             distributed_executor_backend=distributed_executor_backend,
             gpu_memory_utilization=gpu_memory_utilization,
             max_num_batched_tokens=max_num_batched_tokens,
@@ -228,6 +241,13 @@ if __name__=='__main__':
                         type=int,
                         default=1,
                         help="vllm pp")
+    parser.add_argument("--vllm_ep",
+                        type=int,
+                        default=1,
+                        help="vllm ep")
+    parser.add_argument("--ep",
+                        action='store_true',
+                        help="enable expert parallel")
     parser.add_argument("--vllm_mem",
                         type=float,
                         default=0.5,
@@ -247,6 +267,8 @@ if __name__=='__main__':
                         gpu_memory_utilization=args.vllm_mem,
                         tensor_parallel_size=args.vllm_tp,
                         pipeline_parallel_size=args.vllm_pp,
+                        expert_parallel_size=args.vllm_ep,
+                        enable_expert_parallel=args.ep,
                         gpus=args.ray_gpus,
                         max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.max_prefill_len,
                         max_model_len =args.max_new_tokens+args.max_prefill_len)
