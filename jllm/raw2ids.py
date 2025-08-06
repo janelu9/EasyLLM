@@ -533,6 +533,8 @@ def main(args):
     source=os.path.abspath(args.input)
     while source.endswith('/'):
         source=source[:-1]
+    while args.tokenizer.endswith('/'):
+        args.tokenizer=args.tokenizer[:-1]
     source_dir=os.path.dirname(source)
     file =os.path.basename(source)
     file_name = os.path.splitext(file)[0]
