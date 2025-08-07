@@ -91,9 +91,9 @@ parser.add_argument('--zero_stage',
                     type=int,
                     default=0,
                     help='zero stage')
-parser.add_argument('--split_dlayer',
-                    action='store_true',
-                    help='split decoder layers')
+# parser.add_argument('--split_dlayer',
+                    # action='store_true',
+                    # help='split decoder layers')
 # parser.add_argument('--sort_by_len',
                     # action='store_true',
                     # help='sort the samples by length')
@@ -137,9 +137,9 @@ parser.add_argument("--partition_method",
                     type=str,
                     default= "fast",
                     help="support 'fast', 'mem' and deepspeed's ")
-parser.add_argument("--multi_layerspec",
-                    action='store_true',
-                    help='multi layers per stage')
+# parser.add_argument("--multi_layerspec",
+                    # action='store_true',
+                    # help='multi layers per stage')
 parser.add_argument('--num_train_epochs',
                     type=int,
                     default=1,
@@ -531,15 +531,12 @@ def main(args):
     config.block_mask=args.block_mask
     config.checkpoint_interval = args.checkpoint_grad_interval
     config.checkpoint_grad_step = args.no_checkpoint_grad_step
-    config.emb_partitions = args.emb_partitions
-    config.split_dlayer = args.split_dlayer
     config.device = args.device
     config.pad_one_per_batch=args.pad_one_per_batch
     config.encoder_pipe_parallel_size = args.encoder_pipe_parallel_size
     config.lora = args.lora_dim>0
     config.lora_alpha = args.lora_alpha
     config.only_ckpt_lora = args.only_ckpt_lora
-    config.one_layerspec = not args.multi_layerspec
     config.max_num_images = args.max_num_images
     config.moe_layer_pipe_size=args.moe_layer_pipe_size
     config.aux_loss_backward_scale=args.aux_loss_backward_scale
@@ -568,7 +565,6 @@ def main(args):
         config.seq_len = args.seq_len-1 # (args.seq_len-1+args.sequence_parallel_size-1)//args.sequence_parallel_size+1
     args.seq_len = config.seq_len
     if hasattr(config,'num_experts_per_tok'):
-        config.split_dlayer = True
         if not hasattr(config,'partition_method') or len(config.partition_method)!=args.pipe_parallel_size+1:
             config.partition_method =autopartition_transformer(config,args,get_virtual_num_hidden_layers[config.architectures[0]](config))
     elif not hasattr(config,'partition_method') or len(config.partition_method)!=args.pipe_parallel_size+1:
@@ -589,7 +585,7 @@ def main(args):
     
     if isinstance(config.partition_method,str) and ',' not in config.partition_method:
         partition_method = config.partition_method
-    elif config.one_layerspec :
+    else :
         if isinstance(config.partition_method,str):
             config.partition_method = config.partition_method.split(',')
         if args.pipe_parallel_size == 1:
@@ -598,8 +594,6 @@ def main(args):
             partition_method = str([0]+list(range(2,2+len(config.partition_method))))[1:-1]
         else:
             partition_method = str(list(range(args.encoder_pipe_parallel_size+len(config.partition_method))))[1:-1]
-    else:
-        partition_method = str(config.partition_method)[1:-1]
         
     if args.expert_parallel_size==1:
         topo = ProcessTopology(['data','pipe','model'], [args.data_parallel_size, args.pipe_parallel_size, args.tensor_parallel_size])

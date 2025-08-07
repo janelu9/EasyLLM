@@ -1,6 +1,4 @@
 from .llama.pipeline_llama import LlamaForCausalLMPipe,autopartition_transformer
-from .baichuan.pipeline_baichuan import BaichuanForCausalLMPipe
-from .qwen.pipeline_qwen import QWenForCausalLMPipe,QWenForClassCausalLMPipe
 from .qwen2.pipeline_qwen2 import Qwen2ForCausalLMPipe
 from .qwen3.pipeline_qwen3 import Qwen3ForCausalLMPipe
 from .lora import convert_linear_layer_to_lora,_z3_params_to_fetch,convert_lora_to_linear_layer,only_optimize_lora_parameters,make_model_gradient_checkpointing_compatible
@@ -19,10 +17,7 @@ from .qwen3_moe.parallel_qwen3_moe import Qwen3MoeForCausalLM,get_num_hidden_lay
 
 ModelPipe = {
     'LlamaForCausalLM':LlamaForCausalLMPipe,
-    'QWenLMHeadModel':QWenForCausalLMPipe,
     'Qwen2ForCausalLM':Qwen2ForCausalLMPipe,
-    'QWenForClassCausalLM':QWenForClassCausalLMPipe,
-    'BaichuanForCausalLM':BaichuanForCausalLMPipe,
     'Qwen2MoeForCausalLM':Qwen2MoeForCausalLMPipe,
     'InternVLChatModel':InterenVL2ForCausalLMPipe,
     'InternLM2ForCausalLM':InternLM2ForCausalLMPipe,
