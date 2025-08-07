@@ -82,7 +82,6 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --micro_batch_size 1 \
     --global_batch_size 256 \
     --partition_method 9,5 \
-    --split_dlayer \
     --only_ckpt_model \
     --max_num_checkpoints 2 \
     --learning_rate 1e-5 \
@@ -105,7 +104,6 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --only_ckpt_model \
     --max_num_checkpoints 2 \
     --partition_method fast \
-    --split_dlayer \
     --no_pin_memory \
     --checkpoint_grad_interval 1 \
     --checkpoint checkpoint
@@ -211,7 +209,6 @@ else
         --micro_batch_size 2 \
         --global_batch_size 2048 \
         --partition_method mem \
-        --split_dlayer \
         --only_ckpt_model \
         --max_num_checkpoints 2 \
         --learning_rate 1e-5 \
@@ -249,7 +246,6 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --tensor_parallel_size 8 \
     --expert_parallel_size 2 \
     --partition_method 9,5 \
-    --split_dlayer \
     --num_train_epochs 0 \
     --from_ckpt checkpoint --tag 1000 \
     --output_dir output_path
@@ -278,8 +274,8 @@ python -m jllm.cat2hf \
 |                     internvl2                      |             -             |
 |                     internlm2                      |             -             |
 |                  qwen2/qwen2-moe                   |             -             |
-|                      qwen-14b                      |       80749.57(old)       |
-|                    baichuan-13b                    |       79765.50(old)       |
+|                    ~~qwen-14b~~                    |     ~~80749.57(old)~~     |
+|                  ~~baichuan-13b~~                  |     ~~79765.50(old)~~     |
 |                     llama-13b                      |       92749.82(old)       |
 
 ***Note**: The training speed of each model was measured on 64 NVIDIA A100-PCIE-40GB GPUs linked by 100Gb/s bandwidth of InfiniBand with data type of bfloat16 and batch token size of 2048\*2048 (batch_size\*sequence_length,  batch_size = micro_batch_size \* gradient_accumulation_steps).*
