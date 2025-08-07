@@ -178,15 +178,10 @@ if [[ $NODE_RANK -eq $LAST_RANK ]]; then
         --ray_gpus 8 \
         --vllm_mem 0.8
 else
+    export HCCL_IF_BASE_PORT=$((NODE_RANK + 20000)) # avoid ray's port range.
     echo "Starting training node (Rank $NODE_RANK)"
     echo "Waiting for inference node to start..."
-    
-    timeout=600
-    while ! nc -z $RAY_ADDR 8000; do
-        sleep 1
-        ((timeout--))
-        [[ $timeout -le 0 ]] && echo "Timeout waiting for inference node!" && exit 1
-    done
+    python -m jllm.wait_port $RAY_ADDR 8000
     
     ray start --address="$RAY_ADDR:6380" \
               --num-gpus=0 \
