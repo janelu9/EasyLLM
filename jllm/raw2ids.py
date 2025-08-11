@@ -155,86 +155,63 @@ def finetune_generator(file):
 
 def rlhf(rows,tokenizer,MAX_SEQ_LENGTH,
          ROLE = {},PREFIX = [],ADAPT = [],**kwargs):
-    # rows = json.loads(rows)
     labels  = np.array([rows.pop(0)],dtype=np.int32)
-    msgs = (PREFIX + rows) if 'system' not in rows[0] else rows
     if 'assistant' not in rows[-1]:
-        msgs.append({'assistant':''})
+        rows.append({'assistant':''})
     ids = []
-    for start,msg in enumerate(msgs):
-        k,v = next(iter(msg.items()))
-        if k != "assistant":
-            ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
-            ids.extend(tokenizer.encode(v))
-            pre_k = k
-            break 
+    role0,start = (rows[0],1) if 'system' in rows[0] or len(PREFIX)==0 else (PREFIX[0],0)
+    k,v = next(iter(role0.items()))
+    ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
+    ids.extend(tokenizer.encode(v))
     if k != 'system':
         ids = ADAPT + ids
-    for msg in msgs[start+1:]:
+    
+    k,v = next(iter(rows[start].items()))
+    ids.extend(ROLE[k])
+    ids.extend(tokenizer.encode(v))
+    
+    if len(rows[start:])>2:
+        ROLE['user'] = [tokenizer.im_end_id]+ROLE['user'] 
+    
+    for msg in rows[start+1:]:
         k,v = next(iter(msg.items()))
-        if k != pre_k:
-            if k != "assistant":
-                ids.append(tokenizer.im_end_id)
-            ids.extend(ROLE[k])
-            ids.extend(tokenizer.encode(v))         
-        else:
-            ids.extend(tokenizer.encode(v))
-        pre_k = k
+        ids.extend(ROLE[k])
+        ids.extend(tokenizer.encode(v))
+        
     yield {'input_ids':np.array(ids[-MAX_SEQ_LENGTH:],dtype=np.int32),'labels':labels}
 
 def finetune(rows,tokenizer,MAX_SEQ_LENGTH,
              ROLE = {},PREFIX = [],ADAPT = [],
              qa_inputs_generator=None,padding=False,filter_null=False,**kwargs):
-    # rows = json.loads(rows)
-    msgs = (PREFIX + rows) if 'system' not in rows[0] else rows
+
     ids = []; divide = [0]; 
-    for start,msg in enumerate(msgs):
-        k,v = next(iter(msg.items()))
-        if k != "assistant":
-            ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
-            ids.extend(tokenizer.encode(v))
-            pre_k = k
-            break
-            
+    role0,start = (rows[0],1) if 'system' in rows[0] or len(PREFIX)==0 else (PREFIX[0],0)
+    k,v = next(iter(role0.items()))
+    ids.extend(ROLE[k] if k == 'system' or len(ROLE[k])==1 else ROLE[k][1:])
+    ids.extend(tokenizer.encode(v))
     if k != 'system':
         ids = ADAPT + ids
-    
-    for msg in msgs[start+1:]:
+    for msg in rows[start:]:
         k,v = next(iter(msg.items()))
-        disable_thinking = True if k=='assistant' and v.startswith('<think>\n\n</think>') else False
-        if k != pre_k:
-            if k != "assistant":
-                ids.append(tokenizer.im_end_id)
-                if pre_k != "system":
-                    divide.append(len(ids))
-            ids.extend(ROLE[k])
-            if k == "assistant":
-                divide.append((len(ids)+tokenizer.no_thinking_len) if disable_thinking else len(ids))
-            ids.extend(tokenizer.encode(v))         
-        else:
+        ids.extend(ROLE[k])
+        if k == "user":
             ids.extend(tokenizer.encode(v))
-        pre_k = k
-
-    if k == "assistant":
-        ids.append(tokenizer.im_end_id)
-
-    if len(divide)%2==1:
-        ids=ids[:divide[-1]]
-    else:
-        divide.append(len(ids))
-        
-    if len(divide)>2 :
-        for qa_inputs,_ in qa_inputs_generator(ids,
-                                               divide,
-                                               MAX_SEQ_LENGTH,
-                                               MAX_HISTORY_LENGTH = MAX_SEQ_LENGTH//2,
-                                               pad_token_id = tokenizer.pad_token_id,
-                                               IGNORE_TOKEN_ID = -100,
-                                               padding = padding):
-            if filter_null:
-                if np.sum(qa_inputs['labels']!=-100)<=1:
-                    continue
-            yield qa_inputs
+        else:
+            divide.append((len(ids)+tokenizer.no_thinking_len) if v.startswith('<think>\n\n</think>') else len(ids))
+            ids.extend(tokenizer.encode(v))
+            ids.append(tokenizer.im_end_id)
+            divide.append(len(ids))
+    for qa_inputs,_ in qa_inputs_generator(ids,
+                                           divide,
+                                           MAX_SEQ_LENGTH,
+                                           MAX_HISTORY_LENGTH = MAX_SEQ_LENGTH//2,
+                                           pad_token_id = tokenizer.pad_token_id,
+                                           IGNORE_TOKEN_ID = -100,
+                                           padding = padding):
+        if filter_null:
+            if np.sum(qa_inputs['labels']!=-100)<=1:
+                continue
+        yield qa_inputs
             
 def finetune_vl(iteritems,tokenizer,MAX_SEQ_LENGTH,
                 ROLE = {},PREFIX = [],ADAPT = [],
