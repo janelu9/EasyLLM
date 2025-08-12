@@ -151,7 +151,9 @@ if args.rlhf:
         BACKWARD_MICRO_TIMER,
         BACKWARD_GLOBAL_TIMER,
         BACKWARD_INNER_MICRO_TIMER,
-        BACKWARD_INNER_GLOBAL_TIMER
+        BACKWARD_INNER_GLOBAL_TIMER,
+        schedule,
+        DeepSpeedEngine
     )
     
     counter_0 = -1
@@ -169,7 +171,7 @@ if args.rlhf:
         # The last stage just runs backward on the loss using DeepSpeed's typical
         # mechanisms.
         if self.is_last_stage():
-            super().backward(self.loss)
+            DeepSpeedEngine.backward(self,self.loss)
             self.mem_status('AFTER BWD')
             return
 
@@ -223,7 +225,7 @@ if args.rlhf:
 
         if self.using_bf16_optimizer and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
-            if not self._config.bfloat16_immediate_grad_update:
+            if not self.optimizer.immediate_grad_update:
                 self.optimizer.update_hp_grads(clear_lp_grads=False)
 
         # Free up the memory from the output of forward()
@@ -239,8 +241,8 @@ if args.rlhf:
 
         self.mem_status('AFTER BWD')
         
-    from deepspeed.runtime.pipe import engine
-    engine._exec_backward_pass = _exec_backward_pass
+    from deepspeed.runtime.pipe import engine 
+    engine.PipelineEngine._INSTRUCTION_MAP[schedule.BackwardPass] = _exec_backward_pass
 
 
 if args.expert_parallel_size>1:
