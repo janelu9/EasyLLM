@@ -411,7 +411,10 @@ parser.add_argument("--epsilon_high",
 parser.add_argument("--beta",
                     type=float,
                     default=0.02,
-                    help="beta")   
+                    help="beta")
+parser.add_argument('--cache_prefill',
+                    action='store_true',
+                    help='Cache prefill during reinforcement learning.')
                
 parser = deepspeed.add_config_arguments(parser)
 args=parser.parse_args()
@@ -609,6 +612,7 @@ def main(args):
         config.epsilon_low = args.epsilon_low
         config.epsilon_high = args.epsilon_high
         config.beta = args.beta
+        config.cache_prefill=args.cache_prefill
         from jllm import rlhf
         from vllm.utils import get_ip
         args.ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
@@ -693,7 +697,7 @@ def main(args):
         model.from_pretrained(args.model,args.cache_model)
         if args.only_cache_model:
             return
-    
+            
     if args.lora_dim > 0:
         if args.tensor_parallel_size > 1:
             from peft import LoraConfig, inject_adapter_in_model
@@ -723,7 +727,6 @@ def main(args):
         optimizer = FusedAdam(optimizer_grouped_parameters,
                                   lr=args.learning_rate, weight_decay=args.weight_decay,
                                   betas=(0.9, 0.95))
-                              
     '''
     How many folders, how many partitions. 
     If you want to load the data into memory at one time, moving all the parquet files to same folder. 

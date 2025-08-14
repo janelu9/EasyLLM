@@ -121,6 +121,14 @@ deepspeed -H ${HOSTFILE} \
     ...
 ```
 
+If you are using a shared storage, model weights from HuggingFace will be converted automatically. You can also do this manually when your storage of each node is independent :
+
+```shell
+python -m jllm.hf2ds -p 16 -t 8 -e 4 --partition_method 8,6 -m DeepSeek-R1 -o trained_model
+```
+
+`--partition_method 8,6` denotes there's 8 sub-layers in first stage and 6 sub-layers in last pipeline stage. One decoder layer contains two sub-layers (one Aattention layer, one MLP or MoE layer) in my codes.
+
 ***Note**: Arguments `train_data` and `eval_data` also support `jsonl` file. Run `python -m jllm.train_pipe -h ` for more arguments.* 
 
 Generally, every GPU process reads one piece of data, that means one node with 8 GPUs will need to allocate a total of 8x CPU memory for data.  But now they need just 1x if these GPUs belong to one pipeline under my special optimizations in this project . **I strongly recommend you to train your model with faster and low-cost Pipeline Parallelism** rather than ZERO. Pipeline engine could directly load and save model's weights in HuggingFace's format. It could also load weights from checkpoint. If you want to resume interruption, any configs related to training shouldn't be modified. 
@@ -137,6 +145,9 @@ Setting `--partition_method` to be `fast` will always get a faster training when
 # reward.py
 import numpy as np
 
+with open('truth.txt','r') as f:
+	truth = f.read().splitlines()
+
 def reward_func(index, text=None, token_ids=None):
     '''
     Args:
@@ -151,8 +162,9 @@ def reward_func(index, text=None, token_ids=None):
     		The reward sorces of this group.
     '''
     ## For example ##:
-    print(text)
-    scores = np.random.rand(len(token_ids))
+    print('responses':text)
+    print('truth':truth[index])
+    scores = np.random.rand(len(text))
     return scores
 ```
 
@@ -435,4 +447,5 @@ If you find EasyLLM useful or use EasyLLM's code  in your research, please cite 
 
 ## Acknowledgment
 
-This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed),  [Megatron-LM](https://github.com/NVIDIA/Megatron-LM.git), [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git), [vLLM](https://github.com/vllm-project/vllm).
+This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed), [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git), [vLLM](https://github.com/vllm-project/vllm),  [Megatron-LM](https://github.com/NVIDIA/Megatron-LM.git).
+
