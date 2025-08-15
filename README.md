@@ -175,18 +175,23 @@ GPUS_PER_NODE=8
 MASTER_ADDR='ip of first node'
 MASTER_PORT=6000
 RAY_ADDR='ip of last node'
-LAST_RANK=$((NUM_NODES - 1))
+INFER_NODES=1
+INFER_START_RANK=$((NUM_NODES - INFER_NODES))
 
-if [[ $NODE_RANK -eq $LAST_RANK ]]; then
+if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     echo "Starting inference node (Rank $NODE_RANK)"
     ray start --head --port 6380
+    python jllm.sync_ray $INFER_NODES
     python -m jllm.vllm --model Qwen3-32B \
         --max_prefill_len 2048 \
         --num_generations 32 \
         --max_new_tokens 2048 \
         --vllm_tp 8 \
-        --ray_gpus 8 \
+        --ray_gpus $((INFER_NODES*8)) \
         --vllm_mem 0.8
+elif [[ $NODE_RANK -gt $INFER_START_RANK ]]; then
+    python -m jllm.wait_port $RAY_ADDR 6380
+    ray start --address="$RAY_ADDR:6380"
 else
     export HCCL_IF_BASE_PORT=$((NODE_RANK * 16 + 20000)) # avoid ray's port range.
     echo "Starting training node (Rank $NODE_RANK)"
@@ -200,7 +205,7 @@ else
               --object-store-memory=$((4 * 1024**3)) \
               --resources='{"NPU":0}'
 
-    TRAIN_NODES=$((NUM_NODES - 1))
+    TRAIN_NODES=$((NUM_NODES - INFER_NODES))
     WORLD_SIZE=$((GPUS_PER_NODE * TRAIN_NODES))
     DISTRIBUTED_ARGS=(
         --nproc_per_node $GPUS_PER_NODE
@@ -232,7 +237,8 @@ else
         --vllm_sync_stage 1 \
         --ray_ip $RAY_ADDR \
         --reward_func reward.py \
-        --isolated_vllm
+        --isolated_vllm \
+        --num_vllm_engines $INFER_NODES
 fi
 ```
 

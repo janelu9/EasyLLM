@@ -617,10 +617,11 @@ def main(args):
         from vllm.utils import get_ip
         args.ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
         dp_rank = topo.get_coord(rank=args.global_rank).data
-        assert args.data_parallel_size>=args.num_vllm_engines
-        args.vllm_engine_rank = dp_rank%args.num_vllm_engines
+        assert args.num_vllm_engines%args.data_parallel_size==0
+        engines_per_rank = args.num_vllm_engines//args.data_parallel_size
+        args.vllm_engine_ranks = list(range(dp_rank*engines_per_rank,(dp_rank+1)*engines_per_rank))
         if args.isolated_vllm:
-            rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_rank)
+            rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_ranks)
         else:
             from jllm.vllm import init_vllm
             if args.global_rank==0:
@@ -636,7 +637,7 @@ def main(args):
             torch.distributed.barrier()
             if args.global_rank!=0:
                 args.num_vllm_engines = args.ray_gpus//vllm_tp//vllm_tp
-                rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_rank)
+                rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_ranks)
 
     train_ds_config = get_train_ds_config
     if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
