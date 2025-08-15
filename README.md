@@ -232,13 +232,14 @@ else
         --checkpoint checkpoint \
         --checkpoint_grad_interval 4 \
         --rlhf \
+        --rlhf_sync
         --num_generations 32 \
         --max_new_tokens 2048 \
         --vllm_sync_stage 1 \
         --ray_ip $RAY_ADDR \
         --reward_func reward.py \
         --isolated_vllm \
-        --num_vllm_engines $INFER_NODES
+        --num_vllm_engines $INFER_NODES 
 fi
 ```
 

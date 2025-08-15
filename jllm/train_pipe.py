@@ -415,6 +415,9 @@ parser.add_argument("--beta",
 parser.add_argument('--cache_prefill',
                     action='store_true',
                     help='Cache prefill during reinforcement learning.')
+parser.add_argument('--rlhf_sync',
+                    action='store_true',
+                    help='infer then train.')
                
 parser = deepspeed.add_config_arguments(parser)
 args=parser.parse_args()
