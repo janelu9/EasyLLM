@@ -183,9 +183,7 @@ if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     ray start --head --port 6380
     python jllm.sync_ray $INFER_NODES
     python -m jllm.vllm --model Qwen3-32B \
-        --max_prefill_len 2048 \
-        --num_generations 32 \
-        --max_new_tokens 2048 \
+        --max_model_len 4096 \
         --vllm_tp 8 \
         --ray_gpus $((INFER_NODES*8)) \
         --vllm_mem 0.8
@@ -454,5 +452,4 @@ If you find EasyLLM useful or use EasyLLM's code  in your research, please cite 
 
 ## Acknowledgment
 
-This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed), [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git), [vLLM](https://github.com/vllm-project/vllm),  [Megatron-LM](https://github.com/NVIDIA/Megatron-LM.git).
-
+This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed), [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git), [vLLM](https://github.com/vllm-project/vllm),  [megatron_core](https://github.com/NVIDIA/Megatron-LM/tree/main/megatron/core/tensor_parallel).
