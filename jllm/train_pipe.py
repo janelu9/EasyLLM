@@ -418,7 +418,11 @@ parser.add_argument('--cache_prefill',
 parser.add_argument('--rlhf_sync',
                     action='store_true',
                     help='infer then train.')
-               
+parser.add_argument('--max_num_seqs',
+                    type=int,
+                    default=8,
+                    help="num of seqs of vllm continuous batching.")
+                    
 parser = deepspeed.add_config_arguments(parser)
 args=parser.parse_args()
 assert args.early_stop != 0
