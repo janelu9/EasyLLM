@@ -415,9 +415,6 @@ parser.add_argument("--beta",
 parser.add_argument('--cache_prefill',
                     action='store_true',
                     help='Cache prefill during reinforcement learning.')
-parser.add_argument('--rlhf_sync',
-                    action='store_true',
-                    help='infer then train.')
 parser.add_argument('--max_num_seqs',
                     type=int,
                     default=8,

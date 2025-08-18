@@ -185,6 +185,7 @@ if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     python -m jllm.vllm --model Qwen3-32B \
         --max_model_len 4096 \
         --vllm_tp 8 \
+        --max_num_seqs 8 \
         --ray_gpus $((INFER_NODES*8)) \
         --vllm_mem 0.8
 elif [[ $NODE_RANK -gt $INFER_START_RANK ]]; then
@@ -230,13 +231,13 @@ else
         --checkpoint checkpoint \
         --checkpoint_grad_interval 4 \
         --rlhf \
-        --rlhf_sync
         --num_generations 32 \
         --max_new_tokens 2048 \
         --vllm_sync_stage 1 \
         --ray_ip $RAY_ADDR \
         --reward_func reward.py \
         --isolated_vllm \
+        --max_num_seqs 8 \
         --num_vllm_engines $INFER_NODES 
 fi
 ```
