@@ -232,11 +232,10 @@ else
         --checkpoint_grad_interval 4 \
         --rlhf \
         --num_generations 32 \
-        --max_new_tokens 2048 \
+        --max_model_len 4096 \
         --vllm_sync_stage 1 \
         --ray_ip $RAY_ADDR \
         --reward_func reward.py \
-        --isolated_vllm \
         --max_num_seqs 8 \
         --num_vllm_engines $INFER_NODES 
 fi

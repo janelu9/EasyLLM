@@ -336,17 +336,14 @@ parser.add_argument('--only_optimize_lora',
 parser.add_argument('--rlhf',
                     action='store_true',
                     help='Reinforcement Learning.')
-parser.add_argument('--isolated_vllm',
-                    action='store_true',
-                    help='isolated vllm')
 parser.add_argument("--num_generations",
                     type=int,
                     default=4,
                     help="num generations")
-parser.add_argument("--max_new_tokens",
+parser.add_argument("--max_model_len",
                     type=int,
-                    default=33,
-                    help="max new tokens")
+                    default=8192,
+                    help="max model len")
 parser.add_argument("--vllm_sync_stage",
                     type=int,
                     default=0,
@@ -550,8 +547,6 @@ def main(args):
     config.swap_experts_per_steps=args.swap_experts_per_steps
     config.gradient_accumulation_steps = args.gradient_accumulation_steps
     config.rlhf=args.rlhf
-    config.num_generations = args.num_generations
-    config.max_new_tokens = args.max_new_tokens
     # config.reward_func = args.reward_func
     # config.top_p = args.top_p
     # config.repetition_penalty = args.repetition_penalty
@@ -612,6 +607,8 @@ def main(args):
         assert args.num_generations//args.sequence_parallel_size%args.micro_batch_size == 0
         assert (args.gradient_accumulation_steps*args.micro_batch_size)%(args.num_generations//args.sequence_parallel_size)==0
         num_train_batch = num_train_batch*args.num_generations
+        config.num_generations = args.num_generations
+        config.max_new_tokens = args.max_new_tokens = args.max_model_len - args.seq_len -1
         config.micro_batch_size = args.micro_batch_size
         config.epsilon_low = args.epsilon_low
         config.epsilon_high = args.epsilon_high
@@ -624,24 +621,7 @@ def main(args):
         assert args.num_vllm_engines%args.data_parallel_size==0
         engines_per_rank = args.num_vllm_engines//args.data_parallel_size
         args.vllm_engine_ranks = list(range(dp_rank*engines_per_rank,(dp_rank+1)*engines_per_rank))
-        if args.isolated_vllm:
-            rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_ranks)
-        else:
-            from jllm.vllm import init_vllm
-            if args.global_rank==0:
-                vllm_actor = init_vllm(f"{args.ray_ip}:{args.ray_port}",
-                                       args.model,
-                                       gpu_memory_utilization=args.vllm_mem,
-                                       tensor_parallel_size=args.vllm_tp,
-                                       pipeline_parallel_size=args.vllm_pp,
-                                       gpus=args.ray_gpus,
-                                       max_num_batched_tokens=args.num_generations*args.max_new_tokens+args.seq_len,
-                                       max_model_len =args.max_new_tokens+args.seq_len)
-                rlhf.vllm_actor=vllm_actor
-            torch.distributed.barrier()
-            if args.global_rank!=0:
-                args.num_vllm_engines = args.ray_gpus//vllm_tp//vllm_tp
-                rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_ranks)
+        rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_ranks)
 
     train_ds_config = get_train_ds_config
     if args.ds_config is not None:train_ds_config = dynamic_import_module(args.ds_config).get_train_ds_config
