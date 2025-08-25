@@ -16,7 +16,7 @@ Training Large Language Model faster, easily and low-cost.
 
 ✦ Low communication and dynamic experts balance when Mixture of Experts training.
 
-✦ Flash speed of Reinforcement Learning with optimizations as asynchronous inference and training, etc.
+✦ Flash speed of Reinforcement Learning benefitting from optimizations as asynchronous inference and training, etc.
 
 ## Installation
 
@@ -168,7 +168,7 @@ def reward_func(index, text=None, token_ids=None):
     return scores
 ```
 
-2. Start a inference engine and the grpo training task according to node rank.
+2. Start inference engines and the GRPO training task according to node ranks.
 
 ```shell
 GPUS_PER_NODE=8
@@ -181,7 +181,7 @@ INFER_START_RANK=$((NUM_NODES - INFER_NODES))
 if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     echo "Starting inference node (Rank $NODE_RANK)"
     ray start --head --port 6380
-    python jllm.sync_ray $INFER_NODES
+    python -m jllm.sync_ray $INFER_NODES
     python -m jllm.vllm --model Qwen3-32B \
         --max_model_len 4096 \
         --vllm_tp 8 \
