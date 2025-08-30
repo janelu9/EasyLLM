@@ -241,6 +241,10 @@ else
 fi
 ```
 
+<img width="2013" height="602" alt="image" src="https://github.com/user-attachments/assets/94f45efa-274f-44a4-a7af-83d73711798e" />
+
+<center>Figure 1 Up: Synchronous inference and training. Down: Periodic asynchronous inference and training.</center>
+
 ### Checkpoint Conversion
 
 If argument `--only_ckpt_model`  is enabled , engine will directly only checkpoint model's weights with HF's format.
@@ -453,3 +457,4 @@ If you find EasyLLM useful or use EasyLLM's code  in your research, please cite 
 ## Acknowledgment
 
 This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed), [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git), [vLLM](https://github.com/vllm-project/vllm),  [megatron_core](https://github.com/NVIDIA/Megatron-LM/tree/main/megatron/core/tensor_parallel).
+
