@@ -220,6 +220,10 @@ async def generate(request: GenerationRequest):
     token_ids = [oi.token_ids for oi in outputs.outputs]
     return JSONResponse({'text':text,'token_ids':token_ids})
     
+@app.post("/shutdown")
+async def shutdown():
+    server_instance.should_exit = True
+    
 if __name__=='__main__':
     import argparse
     parser = argparse.ArgumentParser(description='vllm')
@@ -278,9 +282,5 @@ if __name__=='__main__':
                         gpus=args.ray_gpus,
                         max_model_len =args.max_model_len)
     import uvicorn
-    uvicorn.run(app, host=ray_ip, port=8000)
-        # import time
-        # while True:
-            # time.sleep(3600)
-    # except KeyboardInterrupt:
-        # ray.shutdown()
+    server_instance = uvicorn.Server(uvicorn.Config(app, host=ray_ip, port=8000))
+    server_instance.run()

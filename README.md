@@ -235,7 +235,9 @@ else
         --vllm_sync_stage 1 \
         --ray_ip $RAY_ADDR \
         --reward_func reward.py \
-        --num_vllm_engines $INFER_NODES 
+        --num_vllm_engines $INFER_NODES
+        
+    curl -X POST http://$RAY_ADDR:8000/shutdown
 fi
 ```
 
