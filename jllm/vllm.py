@@ -1,7 +1,6 @@
 import os
 import torch
 import ray
-from vllm import LLM
 from jllm.cat2hf import parallel_type
 from jllm.rlhf import stateless_init_process_group
 
@@ -122,14 +121,29 @@ class WorkerExtension:
             self.model_runner.model.load_weights(weights=weights)
             torch.cuda.synchronize()
 
-class vLLM(LLM):
+class vLLM:
     def __init__(self, *args,bundle_indices, **kwargs):
+        os.environ["VLLM_USE_V1"] = "1"
         os.environ["VLLM_ALLOW_INSECURE_SERIALIZATION"] = "1"
         if not NPU:
             os.environ.pop("CUDA_VISIBLE_DEVICES", None)
             os.environ["VLLM_RAY_PER_WORKER_GPUS"] = "0.6"
             os.environ["VLLM_RAY_BUNDLE_INDICES"] = ",".join(map(str, bundle_indices))
-        super().__init__(*args, **kwargs)
+        from vllm import AsyncEngineArgs,AsyncLLMEngine
+        from vllm.utils import random_uuid
+        engine_args = AsyncEngineArgs(*args, **kwargs)
+        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
+        self.random_uuid = random_uuid
+        
+    async def collective_rpc(self,method,args=tuple(),kwargs = {}):
+        return await self.engine.collective_rpc(method,args=args,kwargs=kwargs)
+
+    async def generate(self,prompts,sampling_params):
+        request_id = self.random_uuid()
+        results_generator = self.engine.generate(prompts, sampling_params, request_id)
+        async for request_output in results_generator:
+            final_output = request_output
+        return final_output
         
 def init_vllm(address,
               model,
@@ -139,7 +153,6 @@ def init_vllm(address,
               expert_parallel_size=1,
               enable_expert_parallel = False,
               gpus=1,
-              max_num_seqs=32,
               max_model_len=1024):
     from ray.util.placement_group import placement_group
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -172,7 +185,6 @@ def init_vllm(address,
             enable_expert_parallel = enable_expert_parallel,
             distributed_executor_backend=distributed_executor_backend,
             gpu_memory_utilization=gpu_memory_utilization,
-            max_num_seqs=max_num_seqs,
             max_model_len=max_model_len,
             bundle_indices=None if NPU else list(range(i*model_size,(i+1)*model_size)),
         )
@@ -186,24 +198,26 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from vllm.inputs import TokensPrompt
 from vllm import SamplingParams
-import asyncio
+from vllm.sampling_params import RequestOutputKind
 
 app = FastAPI()
 
 class GenerationRequest(BaseModel):
     rank: int = 0
-    prompts: List[List[int]] = [[]]
+    prompts: List[int] = [None]
     sampling_params: Dict[str, Any] = {}
+    output_kind: RequestOutputKind = RequestOutputKind.FINAL_ONLY 
     
 @app.post("/generate")
 async def generate(request: GenerationRequest):
-    token_prompts = [TokensPrompt(prompt_token_ids=p) for p in request.prompts]
     actor = actor_pool[request.rank]
+    sampling_params=SamplingParams(**request.sampling_params)
+    sampling_params.output_kind = request.output_kind
     outputs = await actor.generate.remote(
-                      prompts=token_prompts,
-                      sampling_params=SamplingParams(**request.sampling_params)) 
-    text = [oi.text for o in outputs for oi in o.outputs]
-    token_ids = [oi.token_ids for o in outputs for oi in o.outputs]
+                      prompts=TokensPrompt(prompt_token_ids=request.prompts),
+                      sampling_params=sampling_params)
+    text = [oi.text for oi in outputs.outputs]
+    token_ids = [oi.token_ids for oi in outputs.outputs]
     return JSONResponse({'text':text,'token_ids':token_ids})
     
 if __name__=='__main__':
@@ -217,10 +231,6 @@ if __name__=='__main__':
                         type=int,
                         default=256,
                         help="max context tokens")
-    parser.add_argument("--max_num_seqs",
-                        type=int,
-                        default=None,
-                        help="continuous batching size")
     parser.add_argument("--ray_ip",
                         type=str,
                         default=None,
@@ -266,7 +276,6 @@ if __name__=='__main__':
                         expert_parallel_size=args.vllm_ep,
                         enable_expert_parallel=args.ep,
                         gpus=args.ray_gpus,
-                        max_num_seqs = args.max_num_seqs,
                         max_model_len =args.max_model_len)
     import uvicorn
     uvicorn.run(app, host=ray_ip, port=8000)

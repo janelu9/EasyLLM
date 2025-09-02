@@ -412,10 +412,6 @@ parser.add_argument("--beta",
 parser.add_argument('--cache_prefill',
                     action='store_true',
                     help='Cache prefill during reinforcement learning.')
-parser.add_argument('--max_num_seqs',
-                    type=int,
-                    default=8,
-                    help="num of seqs of vllm continuous batching.")
                     
 parser = deepspeed.add_config_arguments(parser)
 args=parser.parse_args()
@@ -467,7 +463,7 @@ def main(args):
         if os.path.exists(args.self_partition):
             with open(args.self_partition,'r') as f:
                 partitions = json.load(f)
-            train_data_partitions = [[os.path.join(args.train_data,pi) for pi in p] for p in partitions]
+            train_data_partitions = [[os.path.join(args.train_data,pi) for pi in p] for p in partitions['data']]
             num_partitions[:]=len(train_data_partitions)
         torch.distributed.broadcast(num_partitions,0)
         args.num_partitions = num_partitions.item()
@@ -486,7 +482,11 @@ def main(args):
         num_train_batch = 0
         seq_len = 0
         block_mask = 0
-        for file in os.listdir(args.train_data):
+        if args.self_partition and os.path.exists(args.self_partition):
+            data_info_file =[p for ps in partitions['info'] for p in ps]
+        else:
+            data_info_file = os.listdir(args.train_data)
+        for file in data_info_file:
             if file.endswith('info.json'):
                 with open(os.path.join(args.train_data,file),'r') as f:
                     data_info = json.load(f)
