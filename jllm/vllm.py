@@ -177,6 +177,7 @@ def init_vllm(address,
             resources= {"NPU" : model_size} if NPU else None
         )(vLLM).options(name=f"llm_{i}",namespace="vllm", lifetime="detached").remote(
             model=model,
+            load_format="dummy",
             enforce_eager=True,
             worker_extension_cls="jllm.vllm.WorkerExtension",
             tensor_parallel_size=tensor_parallel_size,

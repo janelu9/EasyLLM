@@ -237,7 +237,7 @@ else
         --reward_func reward.py \
         --num_vllm_engines $INFER_NODES
         
-    curl -X POST http://$RAY_ADDR:8000/shutdown
+    python -c "import requests;requests.post('http://"$RAY_ADDR":8000/shutdown')"
 fi
 ```
 
