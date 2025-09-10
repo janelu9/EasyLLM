@@ -184,6 +184,7 @@ if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     python -m jllm.sync_ray $INFER_NODES
     python -m jllm.vllm --model Qwen3-32B \
         --max_model_len 4096 \
+        --max_num_seqs 128 \
         --vllm_tp 8 \
         --ray_gpus $((INFER_NODES*8)) \
         --vllm_mem 0.8
