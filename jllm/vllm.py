@@ -236,7 +236,7 @@ if __name__=='__main__':
                         help="huggingface's model path")
     parser.add_argument("--max_num_seqs",
                         type=int,
-                        default=128,
+                        default=256,
                         help="continuous batching size")
     parser.add_argument("--max_model_len",
                         type=int,

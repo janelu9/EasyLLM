@@ -129,7 +129,7 @@ if __name__=='__main__':
     args = parser.parse_args()
     
     NODE_RANK = int(os.environ["NODE_RANK"])
-    sync_dir = '/'.join((args.model if args.model is not None else args.data).rsplit(os.path.sep)[:3]+['sync/'])
+    sync_dir = '/'.join((args.model if args.model is not None else args.data).rsplit(os.path.sep)[:3]+['sync',os.environ.get("MASTER_ADDR",'')])
     if NODE_RANK==0 and obs_exists(sync_dir):
         obs_rm(sync_dir, recursive=True)
 
