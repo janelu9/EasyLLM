@@ -181,7 +181,7 @@ INFER_START_RANK=$((NUM_NODES - INFER_NODES))
 if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     echo "Starting inference node (Rank $NODE_RANK)"
     ray start --head --port 6380
-    python -m jllm.sync_ray $INFER_NODES
+    python -m jllm.sync_ray $INFER_NODES # waitting for ray's wokers.
     python -m jllm.vllm --model Qwen3-32B \
         --max_model_len 4096 \
         --max_num_seqs 256 \
@@ -189,13 +189,13 @@ if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
         --ray_gpus $((INFER_NODES*8)) \
         --vllm_mem 0.8
 elif [[ $NODE_RANK -gt $INFER_START_RANK ]]; then
-    python -m jllm.wait_port $RAY_ADDR 6380
+    python -m jllm.wait_port $RAY_ADDR 6380 # waitting for ray's master.
     ray start --address="$RAY_ADDR:6380"
 else
     export HCCL_IF_BASE_PORT=$((NODE_RANK * 16 + 20000)) # avoid ray's port range.
     echo "Starting training node (Rank $NODE_RANK)"
     echo "Waiting for inference node to start..."
-    python -m jllm.wait_port $RAY_ADDR 8000
+    python -m jllm.wait_port $RAY_ADDR 8000 # waitting for vllm to suspend.
     
     ray start --address="$RAY_ADDR:6380" \
               --num-gpus=0 \

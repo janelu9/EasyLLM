@@ -412,10 +412,10 @@ parser.add_argument("--beta",
 parser.add_argument('--cache_prefill',
                     action='store_true',
                     help='Cache prefill during reinforcement learning.')
-parser.add_argument("--wait_time",
-                    type=int,
-                    default=0,
-                    help="Waiting interval time to send request.")
+# parser.add_argument("--wait_time",
+                    # type=int,
+                    # default=0,
+                    # help="Waiting interval time to send request.")
                     
                     
 parser = deepspeed.add_config_arguments(parser)
