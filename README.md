@@ -195,7 +195,7 @@ else
     export HCCL_IF_BASE_PORT=$((NODE_RANK * 16 + 20000)) # avoid ray's port range.
     echo "Starting training node (Rank $NODE_RANK)"
     echo "Waiting for inference node to start..."
-    python -m jllm.wait_port $RAY_ADDR 8000 # waitting for vllm to suspend.
+    python -m jllm.wait_port $RAY_ADDR 8000 # waitting for vllm to start.
     
     ray start --address="$RAY_ADDR:6380" \
               --num-gpus=0 \
@@ -237,8 +237,9 @@ else
         --ray_ip $RAY_ADDR \
         --reward_func reward.py \
         --num_vllm_engines $INFER_NODES
-        
-    python -c "import requests;requests.post('http://"$RAY_ADDR":8000/shutdown')"
+    if [[ $NODE_RANK -eq 0 ]]; then
+    	python -c "import requests;requests.post('http://"$RAY_ADDR":8000/shutdown')"
+    fi
 fi
 ```
 
