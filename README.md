@@ -162,8 +162,8 @@ def reward_func(index, text=None, token_ids=None):
     		The reward sorces of this group.
     '''
     ## For example ##:
-    print('responses':text)
-    print('truth':truth[index])
+    print('responses:', text[0])
+    print('truth:', truth[index])
     scores = np.random.rand(len(text))
     return scores
 ```

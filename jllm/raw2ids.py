@@ -177,8 +177,8 @@ def rlhf(rows,tokenizer,MAX_SEQ_LENGTH,
         k,v = next(iter(msg.items()))
         ids.extend(ROLE[k])
         ids.extend(tokenizer.encode(v))
-        
-    yield {'input_ids':np.array(ids[-MAX_SEQ_LENGTH:],dtype=np.int32),'labels':labels}
+    if  len(ids)<= MAX_SEQ_LENGTH:
+        yield {'input_ids':np.array(ids,dtype=np.int32),'labels':labels}
 
 def finetune(rows,tokenizer,MAX_SEQ_LENGTH,
              ROLE = {},PREFIX = [],ADAPT = [],
