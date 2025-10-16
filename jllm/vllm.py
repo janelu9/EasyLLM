@@ -170,6 +170,7 @@ def init_vllm(address,
     model_size = tensor_parallel_size*pipeline_parallel_size
     num_engines = gpus//model_size
     actor_pool = []
+    futures = []
     for i in range(num_engines):
         vllm_actor = ray.remote(
             num_cpus=0,
@@ -191,8 +192,10 @@ def init_vllm(address,
             max_model_len=max_model_len,
             bundle_indices=None if NPU else list(range(i*model_size,(i+1)*model_size)),
         )
-        ray.get(vllm_actor.collective_rpc.remote("report_device_id"))
+        future = vllm_actor.collective_rpc.remote("report_device_id")
+        futures.append(future)
         actor_pool.append(vllm_actor)
+    ray.get(futures)
     return actor_pool
     
 from fastapi import FastAPI
