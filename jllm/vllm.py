@@ -62,13 +62,16 @@ class WorkerExtension:
                                  world_size,
                                  rank_offset=1,
                                  pp_rank_of_global_rank_in_vllm=-1,
-                                 train_tp_rank=0,
+                                 train_tp_rank=(0,1),
                                  train_ep_rank=0):
-        from vllm.distributed.parallel_state import get_world_group
+        train_tp_rank,train_tp_size =  train_tp_rank
+        tp_scale = train_tp_size//self.tp_size
+        belong_tp_rank = train_tp_rank//tp_scale
         rank = self.pp_rank
-        if rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank and train_ep_rank==self.ep_rank:
+        if rank != pp_rank_of_global_rank_in_vllm and belong_tp_rank==self.tp_rank and train_ep_rank//tp_scale==self.ep_rank:
             if rank < pp_rank_of_global_rank_in_vllm or pp_rank_of_global_rank_in_vllm == -1:
                 rank += rank_offset
+            self.buffer={}
             self.model_update_groups[global_rank] = stateless_init_process_group(
                 master_address,
                 master_port,
@@ -84,20 +87,33 @@ class WorkerExtension:
                               train_tp_rank=0,
                               train_ep_rank=0,
                               tile=True):
-        from vllm.distributed.parallel_state import get_world_group
-        if self.pp_rank != pp_rank_of_global_rank_in_vllm and train_tp_rank==self.tp_rank and train_ep_rank==self.ep_rank:
+        train_tp_rank,train_tp_size =  train_tp_rank
+        tp_scale = train_tp_size//self.tp_size
+        belong_tp_rank = train_tp_rank//tp_scale
+        if self.pp_rank != pp_rank_of_global_rank_in_vllm and belong_tp_rank==self.tp_rank and train_ep_rank//tp_scale==self.ep_rank:
             weight = torch.empty(shape, dtype=dtype, device="cuda")
             self.model_update_groups[global_rank].broadcast(weight,src=0,stream=torch.cuda.current_stream())
-            if self.tp_size>1 and tile:
-                dim = parallel_type(name)
-                if 'shared_experts' in name:
-                    tensor=tensor.chunk(self.tp_size,dim)[self.tp_rank].contiguous()
-                elif dim==0:
-                    weight = weight.tile(self.tp_size,1) if weight.dim()==2 else weight.tile(self.tp_size)
-                elif dim==1:
-                    weight = weight.tile(1,self.tp_size) if weight.dim()==2 else weight.tile(self.tp_size)
-            self.model_runner.model.load_weights(weights=[(name, weight)])
-            del weight
+            tid = train_tp_rank%tp_scale
+            if name in self.buffer:
+                self.buffer[name][tid] = weight
+            else:
+                self.buffer[name]=[None]*tp_scale
+                self.buffer[name][tid] = weight
+            if None not in self.buffer[name]:
+                if self.tp_size>1 and tile:
+                    dim = parallel_type(name)
+                    if 'shared_experts' in name:
+                        weight = self.buffer[name][0]
+                        weight = weight.chunk(self.tp_size,dim)[self.tp_rank].contiguous()
+                    elif dim==0:
+                        weight = torch.cat(self.buffer[name]).contiguous()
+                        weight = weight.tile(self.tp_size,1) if weight.dim()==2 else weight.tile(self.tp_size)
+                    elif dim==1:
+                        weight = torch.cat(self.buffer[name],1).contiguous() if self.buffer[name][0].dim()==2 else torch.cat(self.buffer[name]).contiguous()
+                        weight = weight.tile(1,self.tp_size) if weight.dim()==2 else weight.tile(self.tp_size)
+                self.model_runner.model.load_weights(weights=[(name, weight)])
+                del self.buffer[name]
+                del weight
 
     def update_weights_by_ipc_handles(self, ipc_handles,tile=True):
         if self.device_uuid in ipc_handles:

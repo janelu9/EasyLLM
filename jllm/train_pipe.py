@@ -107,7 +107,7 @@ parser.add_argument('--emb_partitions',
                     help='split embedding')
 parser.add_argument('--timeout',
                     type=int,
-                    default=1800,
+                    default=3600,
                     help='timeout')
 parser.add_argument('--pipe_parallel_size',
                     type=int,
