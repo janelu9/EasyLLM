@@ -427,77 +427,77 @@ def write_parquet(filename,
     # os.makedirs(partition_dir,exist_ok=True)
     max_seq_len = 0
     max_num_blocks = 0
-    if not auto_batch_size:
-        pbar = tqdm.tqdm(float("inf"))
-        data = next(item_iter)
-        data_batch={k:[data[k]] for k in data}
-        max_seq_len = max(max_seq_len,len(data['input_ids']))
-        max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
-        i=0
-        pbar.update(1)
-        try:
-            while True:
-                for _ in range(batch_size-1):
-                    data = next(item_iter)
-                    for k in data:data_batch[k].append(data[k])
-                    max_seq_len = max(max_seq_len,len(data['input_ids']))
-                    max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
-                    i+=1
-                    pbar.update(1)
-                    
-                pyarrow.parquet.write_table(pyarrow.table(data_batch),
-                                            partition_file % (i//batch_size), 
-                                            compression=compression)
-                del data_batch
-                gc.collect()
-                data_batch = None
-                
+    # if not auto_batch_size:
+    pbar = tqdm.tqdm(float("inf"))
+    data = next(item_iter)
+    data_batch={k:[data[k]] for k in data}
+    max_seq_len = max(max_seq_len,len(data['input_ids']))
+    max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
+    i=0
+    pbar.update(1)
+    try:
+        while True:
+            for _ in range(batch_size-1):
                 data = next(item_iter)
-                data_batch={k:[data[k]] for k in data}
+                for k in data:data_batch[k].append(data[k])
                 max_seq_len = max(max_seq_len,len(data['input_ids']))
                 max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
                 i+=1
                 pbar.update(1)
                 
-        except StopIteration:
-            pbar.close()
-                
-        if data_batch :
             pyarrow.parquet.write_table(pyarrow.table(data_batch),
                                         partition_file % (i//batch_size), 
                                         compression=compression)
-    else:
-        pbar = tqdm.tqdm(float("inf"))
-        data = next(item_iter)
-        data_batch={k:[data[k]] for k in data}
-        max_seq_len = max(max_seq_len,len(data['input_ids']))
-        max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
-        element_num = sum(data[k].size for k in data)
-        i=0
-        p=0
-        pbar.update(1)
-        for data in item_iter:
+            del data_batch
+            gc.collect()
+            data_batch = None
+            
+            data = next(item_iter)
+            data_batch={k:[data[k]] for k in data}
+            max_seq_len = max(max_seq_len,len(data['input_ids']))
+            max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
             i+=1
             pbar.update(1)
-            for k in data: 
-                data_batch[k].append(data[k])
-                max_seq_len = max(max_seq_len,len(data['input_ids']))
-                max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
-                element_num+=data[k].size 
-            if element_num > NUM_ELEMENT_LIMIT:
-                pyarrow.parquet.write_table(pyarrow.table(data_batch),
-                                            partition_file % (p),
-                                            compression=compression)
-                p+=1
-                del data_batch
-                gc.collect()
-                data_batch={k:[] for k in data}
-                element_num = 0
-        pbar.close()       
-        if data_batch[k]:
-            pyarrow.parquet.write_table(pyarrow.table(data_batch),
-                                        partition_file % (p), 
-                                        compression=compression)
+            
+    except StopIteration:
+        pbar.close()
+            
+    if data_batch :
+        pyarrow.parquet.write_table(pyarrow.table(data_batch),
+                                    partition_file % (i//batch_size), 
+                                    compression=compression)
+    # else:
+        # pbar = tqdm.tqdm(float("inf"))
+        # data = next(item_iter)
+        # data_batch={k:[data[k]] for k in data}
+        # max_seq_len = max(max_seq_len,len(data['input_ids']))
+        # max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
+        # element_num = sum(data[k].size for k in data)
+        # i=0
+        # p=0
+        # pbar.update(1)
+        # for data in item_iter:
+            # i+=1
+            # pbar.update(1)
+            # for k in data: 
+                # data_batch[k].append(data[k])
+                # max_seq_len = max(max_seq_len,len(data['input_ids']))
+                # max_num_blocks = max(max_num_blocks,len(data.get('cu_seqlens',[])))
+                # element_num+=data[k].size 
+            # if element_num > NUM_ELEMENT_LIMIT:
+                # pyarrow.parquet.write_table(pyarrow.table(data_batch),
+                                            # partition_file % (p),
+                                            # compression=compression)
+                # p+=1
+                # del data_batch
+                # gc.collect()
+                # data_batch={k:[] for k in data}
+                # element_num = 0
+        # pbar.close()       
+        # if data_batch[k]:
+            # pyarrow.parquet.write_table(pyarrow.table(data_batch),
+                                        # partition_file % (p), 
+                                        # compression=compression)
     del data_batch
     if check:
         os.system(f"echo '{i+1} {max_seq_len} {batch_size} {max_num_blocks} {len(data.keys())}' > {check_file}")

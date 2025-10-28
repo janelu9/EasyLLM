@@ -458,7 +458,9 @@ def main(args):
         cached_dir = os.path.join(os.path.dirname(args.train_data),os.path.splitext(os.path.basename(args.train_data))[0] + f"_{os.path.basename(args.model)}")
         if args.global_rank ==0:
             from .raw2ids import write_parquet
-            write_parquet(args.train_data,cached_dir,args.model,MAX_SEQ_LENGTH=args.seq_len)
+            data_json=write_parquet(args.train_data,cached_dir,args.model,MAX_SEQ_LENGTH=args.seq_len)
+            _,data_json =  next(iter(data_json.items()))
+            with open(os.path.join(cached_dir,'train_info.json'),'w') as f:json.dump(data_json,f,indent=2)
         torch.distributed.barrier()
         args.train_data = cached_dir
     
