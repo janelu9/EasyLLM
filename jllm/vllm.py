@@ -170,7 +170,8 @@ def init_vllm(address,
               enable_expert_parallel = False,
               gpus=1,
               max_num_seqs=256,
-              max_model_len=1024):
+              max_model_len=1024,
+              max_num_batched_tokens=1024):
     from ray.util.placement_group import placement_group
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
     
@@ -206,6 +207,7 @@ def init_vllm(address,
             gpu_memory_utilization=gpu_memory_utilization,
             max_num_seqs=max_num_seqs,
             max_model_len=max_model_len,
+            max_num_batched_tokens=max_num_batched_tokens,
             bundle_indices=None if NPU else list(range(i*model_size,(i+1)*model_size)),
         )
         future = vllm_actor.collective_rpc.remote("report_device_id")
@@ -261,6 +263,10 @@ if __name__=='__main__':
                         type=int,
                         default=2048,
                         help="max context tokens")
+    parser.add_argument("--max_num_batched_tokens",
+                        type=int,
+                        default=2048,
+                        help="max-num-batched-tokens ≈ max-num-seqs * avg_model_len")
     parser.add_argument("--ray_ip",
                         type=str,
                         default=None,
@@ -307,7 +313,8 @@ if __name__=='__main__':
                         enable_expert_parallel=args.ep,
                         gpus=args.ray_gpus,
                         max_num_seqs=args.max_num_seqs,
-                        max_model_len=args.max_model_len)
+                        max_model_len=args.max_model_len,
+                        max_num_batched_tokens=args.max_num_batched_tokens)
     import uvicorn
     server_instance = uvicorn.Server(uvicorn.Config(app, host=ray_ip, port=8000))
     server_instance.run()

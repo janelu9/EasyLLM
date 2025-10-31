@@ -105,6 +105,10 @@ parser.add_argument('--emb_partitions',
                     type=int,
                     default=1,
                     help='split embedding')
+parser.add_argument('--sleep_to_train',
+                    type=int,
+                    default=0,
+                    help='wait time to train')
 parser.add_argument('--timeout',
                     type=int,
                     default=3600,
