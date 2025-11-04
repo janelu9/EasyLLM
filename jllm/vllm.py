@@ -100,7 +100,7 @@ class WorkerExtension:
                 self.buffer[name]=[None]*tp_scale
                 self.buffer[name][tid] = weight
             if None not in self.buffer[name]:
-                if self.tp_size>1 and tile:
+                if train_tp_size>1 and tile:
                     dim = parallel_type(name)
                     if 'shared_experts' in name:
                         weight = self.buffer[name][0]
@@ -169,9 +169,9 @@ def init_vllm(address,
               expert_parallel_size=1,
               enable_expert_parallel = False,
               gpus=1,
-              max_num_seqs=256,
-              max_model_len=1024,
-              max_num_batched_tokens=1024):
+              max_num_seqs=None,
+              max_model_len=None,
+              max_num_batched_tokens=None):
     from ray.util.placement_group import placement_group
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
     
@@ -257,15 +257,15 @@ if __name__=='__main__':
                         help="huggingface's model path")
     parser.add_argument("--max_num_seqs",
                         type=int,
-                        default=256,
+                        default=None,
                         help="continuous batching size")
     parser.add_argument("--max_model_len",
                         type=int,
-                        default=2048,
+                        default=None,
                         help="max context tokens")
     parser.add_argument("--max_num_batched_tokens",
                         type=int,
-                        default=2048,
+                        default=None,
                         help="max-num-batched-tokens ≈ max-num-seqs * avg_model_len")
     parser.add_argument("--ray_ip",
                         type=str,
