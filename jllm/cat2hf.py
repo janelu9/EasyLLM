@@ -60,7 +60,7 @@ if __name__=='__main__':
         del pts
         gc.collect()
         save_file(state_dict,os.path.join(args.hf,model_file if num_stages>1 else "model.safetensors"))
-        print(f'{model_file} saved.')
+        print(f'{model_file} saved.') if num_stages>1 else print(f'model.safetensors saved.')
         return index
 
     with ProcessPoolExecutor(max_workers=min(num_stages,32)) as exe:
