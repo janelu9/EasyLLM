@@ -75,7 +75,6 @@ torchrun ${DISTRIBUTED_ARGS[@]} \
     --model DeepSeek-R1 \
     --num_train_epochs 3 \
     --train_data dataset0_DeepSeek-R1 \
-    --num_partitions 4 \
     --pipe_parallel_size 16 \
     --tensor_parallel_size 8 \
     --expert_parallel_size 2 \

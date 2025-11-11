@@ -543,6 +543,8 @@ def main(args):
         config = AutoConfig.from_pretrained(args.model,trust_remote_code=True)
     except:
         config = AutoConfig.from_pretrained(args.model)
+    
+    if getattr(config,'tie_word_embeddings',False):assert args.pipe_parallel_size == 1, 'only pp==1 supported if tied word embeddings!'
     config.block_mask=args.block_mask
     config.checkpoint_interval = args.checkpoint_grad_interval
     config.checkpoint_grad_step = args.no_checkpoint_grad_step
