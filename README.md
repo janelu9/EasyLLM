@@ -170,12 +170,15 @@ def reward_func(index, text=None, token_ids=None):
 2. Start inference engines and the GRPO training task according to node ranks.
 
 ```shell
+NUM_NODES=5
 GPUS_PER_NODE=8
 MASTER_ADDR='ip of first node'
 MASTER_PORT=6000
 RAY_ADDR='ip of last node'
 INFER_NODES=1
 INFER_START_RANK=$((NUM_NODES - INFER_NODES))
+INFER_GPUS=$((INFER_NODES * GPUS_PER_NODE))
+VLLM_TP=4
 
 if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     echo "Starting inference node (Rank $NODE_RANK)"
@@ -184,8 +187,8 @@ if [[ $NODE_RANK -eq $INFER_START_RANK ]]; then
     python -m jllm.vllm --model Qwen3-32B \
         --max_model_len 4096 \
         --max_num_seqs 256 \
-        --vllm_tp 8 \
-        --ray_gpus $((INFER_NODES*8)) \
+        --vllm_tp $VLLM_TP \
+        --ray_gpus $INFER_GPUS \
         --vllm_mem 0.8
 elif [[ $NODE_RANK -gt $INFER_START_RANK ]]; then
     python -m jllm.wait_port $RAY_ADDR 6380 # waitting for ray's master.
@@ -235,7 +238,7 @@ else
         --vllm_sync_stage 1 \
         --ray_ip $RAY_ADDR \
         --reward_func reward.py \
-        --num_vllm_engines $INFER_NODES
+        --num_vllm_engines $((INFER_GPUS / VLLM_TP))
     if [[ $NODE_RANK -eq 0 ]]; then
     	python -c "import requests;requests.post('http://"$RAY_ADDR":8000/shutdown')"
     fi
