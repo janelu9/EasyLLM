@@ -245,9 +245,11 @@ else
 fi
 ```
 
-<img width="2013" height="602" alt="image" src="https://github.com/user-attachments/assets/94f45efa-274f-44a4-a7af-83d73711798e" />
-
-<center>Figure 1 Up: Synchronous inference and training. Down: Periodic asynchronous inference and training.</center>
+<div align="center">
+  <img width="733" height="500" alt="image" src="https://github.com/janelu9/EasyLLM/blob/main/periodic_async.png" />
+  <br>
+  <em>Figure 1. Comparison of training steps in synchronous and asynchronous systems.</em>
+</div>
 
 ### Checkpoint Conversion
 
@@ -456,9 +458,18 @@ If you find EasyLLM useful or use EasyLLM's code  in your research, please cite 
   journal      = {GitHub repository},
   howpublished = {\url{https://github.com/janelu9/EasyLLM.git}},
 }
+@misc{lu2025periodicasynchronyeffectivemethod,
+      title={Periodic Asynchrony: An Effective Method for Accelerating On-Policy Reinforcement Learning}, 
+      author={Jian Lu},
+      year={2025},
+      eprint={2511.18871},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2511.18871}, 
+}
 ```
-
 ## Acknowledgment
 
 This repository benefits from [DeepSpeed](https://github.com/microsoft/DeepSpeed), [Flash-Attention](https://github.com/Dao-AILab/flash-attention.git), [vLLM](https://github.com/vllm-project/vllm),  [megatron_core](https://github.com/NVIDIA/Megatron-LM/tree/main/megatron/core/tensor_parallel).
+
 
