@@ -416,10 +416,10 @@ parser.add_argument("--beta",
 parser.add_argument('--cache_prefill',
                     action='store_true',
                     help='Cache prefill during reinforcement learning.')
-# parser.add_argument("--wait_time",
+# parser.add_argument("--sleep_time_to_send",
                     # type=int,
                     # default=0,
-                    # help="Waiting interval time to send request.")
+                    # help="Sleep time to send request.")
                     
                     
 parser = deepspeed.add_config_arguments(parser)
@@ -631,9 +631,12 @@ def main(args):
         from vllm.utils import get_ip
         args.ray_ip = get_ip() if args.ray_ip is None else args.ray_ip
         dp_rank = topo.get_coord(rank=args.global_rank).data
-        assert args.num_vllm_engines%args.data_parallel_size==0
-        engines_per_rank = args.num_vllm_engines//args.data_parallel_size
-        args.vllm_engine_ranks = list(range(dp_rank*engines_per_rank,(dp_rank+1)*engines_per_rank))
+        if args.num_vllm_engines>args.data_parallel_size:
+            assert args.num_vllm_engines%args.data_parallel_size==0
+            engines_per_rank = args.num_vllm_engines//args.data_parallel_size
+            args.vllm_engine_ranks = list(range(dp_rank*engines_per_rank,(dp_rank+1)*engines_per_rank))
+        elif args.data_parallel_size>args.num_vllm_engines:
+            args.vllm_engine_ranks = [dp_rank%args.num_vllm_engines]                
         rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_ranks)
 
     train_ds_config = get_train_ds_config
