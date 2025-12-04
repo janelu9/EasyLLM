@@ -635,7 +635,7 @@ def main(args):
             assert args.num_vllm_engines%args.data_parallel_size==0
             engines_per_rank = args.num_vllm_engines//args.data_parallel_size
             args.vllm_engine_ranks = list(range(dp_rank*engines_per_rank,(dp_rank+1)*engines_per_rank))
-        elif args.data_parallel_size>args.num_vllm_engines:
+        elif args.data_parallel_size>=args.num_vllm_engines:
             args.vllm_engine_ranks = [dp_rank%args.num_vllm_engines]                
         rlhf.connect_vllm_actor(f"{args.ray_ip}:{args.ray_port}",args.vllm_engine_ranks)
 
