@@ -585,6 +585,8 @@ def main(args):
     elif not hasattr(config,'partition_method') or len(config.partition_method)!=args.pipe_parallel_size+1:
         if hasattr(config,'llm_config'):
             config.partition_method = autopartition_decoder(config.llm_config,args)
+        elif hasattr(config,'text_config'):
+            config.partition_method = autopartition_decoder(config.text_config,args)
         elif hasattr(config,'vision_config') and not hasattr(config,'llm_config'):
             config.partition_method = autopartition_decoder(config,args)
         else:
@@ -649,7 +651,8 @@ def main(args):
         'train_batch_size'] = args.global_batch_size//args.sequence_parallel_size
     ds_config['steps_per_print'] = args.steps_per_print
 
-    if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2:
+    if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2 \
+        or config.model_type == 'qwen3_vl':
         if args.device == 'npu':
             import jllm.ascend
         from jllm.core import parallel_state,tensor_parallel
