@@ -229,7 +229,7 @@ def finetune_vl(iteritems,tokenizer,MAX_SEQ_LENGTH,
             num_patches = 0
             num_images = 0
             for img in imgs:
-                # try:
+                try:
                     if img not in images_database:
                         image = cv2.imread(os.path.join(image_path,img))
                         image_tokens,resize_info,num_patch = tokenizer.get_image_tokens(image)
@@ -240,9 +240,9 @@ def finetune_vl(iteritems,tokenizer,MAX_SEQ_LENGTH,
                     pixes.append(img)
                     num_patches+=num_patch
                     num_images+=1
-                # except:
-                    # v=v.replace('<image>', '<图片>',1)
-                    # pixes.append('')
+                except:
+                    v=v.replace('<image>', '<图片>',1)
+                    pixes.append('')
             return v,pixes if len(pixes) else [''],num_patches,num_images
         return v,[''],0,0
 

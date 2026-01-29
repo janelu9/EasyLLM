@@ -1,8 +1,9 @@
 def parallel_type(k):
-    if  "o_proj.weight" in k or ("down_proj.weight" in k and 'shared_experts' not in k) or 'attn.proj.weight' in k or 'mlp.fc2.weight' in k or 'mlp.2.weight' in k :
+    if  "o_proj.weight" in k or ("down_proj.weight" in k and 'shared_experts' not in k) or 'attn.proj.weight' in k or 'mlp.fc2.weight' in k or 'mlp.2.weight' in k \
+    or 'linear_fc1.weight' in k:
         return 1
     if "lm_head" in k or ("gate_proj" in k and 'shared_experts' not in k) or ("up_proj" in k and 'shared_experts' not in k) or "embed_tokens" in k or "q_proj" in k \
-    or "k_proj" in k or "v_proj" in k or 'attn.qkv' in k or 'mlp.fc1' in k or 'mlp.0' in k \
+    or "k_proj" in k or "v_proj" in k or 'attn.qkv' in k or 'mlp.fc1' in k or 'mlp.0' in k or 'linear_fc2.weight' in hk \
     or 'q_b_proj' in k or 'kv_b_proj' in k:
         return 0
     return -1
