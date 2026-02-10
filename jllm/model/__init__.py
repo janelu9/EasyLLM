@@ -14,6 +14,7 @@ from .intern.pipeline_internvl2 import InterenVL2ForCausalLMPipe,autopartition_d
 from .intern.pipeline_internlm2 import InternLM2ForCausalLMPipe
 from .deepseek_v3.parallel_deepseek_v3 import DeepseekV3ForCausalLM,get_num_hidden_layers as deepseek_v3_get_num_hidden_layers,get_layer_map as deepseek_v3_get_layer_map
 from .qwen3_moe.parallel_qwen3_moe import Qwen3MoeForCausalLM,get_num_hidden_layers as qwen3moe_get_num_hidden_layers,get_layer_map as qwen3_moe_get_layer_map
+from .qwen3_vl.parallel_qwen3_vl import Qwen3VLForCausalLMParallel
 
 ModelPipe = {
     'LlamaForCausalLM':LlamaForCausalLMPipe,
@@ -34,6 +35,7 @@ ModelParallel = {
     'DeepseekV3ForCausalLM':DeepseekV3ForCausalLM,
     'Qwen3ForCausalLM':Qwen3ForCausalLMParallel,
     'Qwen3MoeForCausalLM':Qwen3MoeForCausalLM,
+    'Qwen3VLForConditionalGeneration':Qwen3VLForCausalLMParallel
 }
 
 get_virtual_num_hidden_layers ={

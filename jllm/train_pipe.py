@@ -305,9 +305,9 @@ parser.add_argument('--balance_experts_timeout',
                     type=int,
                     default=60,
                     help="balance experts timeout.")
-parser.add_argument('--pad_one_per_batch',
-                    action='store_true',
-                    help='pad the one samples every batch.')
+# parser.add_argument('--pad_one_per_batch',
+                    # action='store_true',
+                    # help='pad the one samples every batch.')
 parser.add_argument("--padding_rate",
                     type=float,
                     default=0.0,
@@ -549,7 +549,7 @@ def main(args):
     config.checkpoint_interval = args.checkpoint_grad_interval
     config.checkpoint_grad_step = args.no_checkpoint_grad_step
     config.device = args.device
-    config.pad_one_per_batch=args.pad_one_per_batch
+    # config.pad_one_per_batch=args.pad_one_per_batch
     config.encoder_pipe_parallel_size = args.encoder_pipe_parallel_size
     config.lora = args.lora_dim>0
     config.lora_alpha = args.lora_alpha
@@ -668,8 +668,8 @@ def main(args):
         from jllm.core.model_parallel_config import ModelParallelConfig
         parallel_config = ModelParallelConfig(tensor_model_parallel_size=args.tensor_parallel_size,
                                               pipeline_model_parallel_size=args.pipe_parallel_size,
-                                              params_dtype=config.torch_dtype,
-                                              pipeline_dtype=config.torch_dtype,
+                                              params_dtype=config.torch_dtype or config.dtype,
+                                              pipeline_dtype=config.torch_dtype or config.dtype,
                                               async_tensor_model_parallel_allreduce=args.async_tensor_model_parallel_allreduce
                                              )
         parallel_state.set_aux_loss_alpha(args.aux_loss_alpha)

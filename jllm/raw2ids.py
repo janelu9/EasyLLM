@@ -954,6 +954,7 @@ TOKENIZER = {
     'PreTrainedTokenizerFast':llama3_template,
     'QWenTokenizer':qwen_template,
     'Qwen2TokenizerFast':qwen2_template,
+    'Qwen2Tokenizer':qwen2_template,
     'BaichuanTokenizer':baichcuan_template,
     'InternLM2Tokenizer':internvl_template,
     'InternLM2TokenizerFast':internvl_template
