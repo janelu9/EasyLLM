@@ -1,10 +1,12 @@
 from .llama.pipeline_llama import LlamaForCausalLMPipe,autopartition_transformer
 from .qwen2.pipeline_qwen2 import Qwen2ForCausalLMPipe
 from .qwen3.pipeline_qwen3 import Qwen3ForCausalLMPipe
+
 from .lora import convert_linear_layer_to_lora,_z3_params_to_fetch,convert_lora_to_linear_layer,only_optimize_lora_parameters,make_model_gradient_checkpointing_compatible
 from .llama.parallel_llama import LlamaForCausalLMPipe as LlamaForCausalLMParallel
 from .qwen2.parallel_qwen2 import Qwen2ForCausalLMPipe as Qwen2ForCausalLMParallel
 from .qwen3.parallel_qwen3 import Qwen3ForCausalLMPipe as Qwen3ForCausalLMParallel
+
 from .qwen2.pipeline_qwen2_moe import Qwen2MoeForCausalLMPipe,get_num_hidden_layers as qwen_get_num_hidden_layers
 from .qwen2_vl.pipeline_qwen2_vl import Qwen2VLForCausalLMPipe
 from .qwen2_vl.parallel_qwen2_vl import Qwen2VLForCausalLMParallel
@@ -14,6 +16,8 @@ from .intern.pipeline_internvl2 import InterenVL2ForCausalLMPipe,autopartition_d
 from .intern.pipeline_internlm2 import InternLM2ForCausalLMPipe
 from .deepseek_v3.parallel_deepseek_v3 import DeepseekV3ForCausalLM,get_num_hidden_layers as deepseek_v3_get_num_hidden_layers,get_layer_map as deepseek_v3_get_layer_map
 from .qwen3_moe.parallel_qwen3_moe import Qwen3MoeForCausalLM,get_num_hidden_layers as qwen3moe_get_num_hidden_layers,get_layer_map as qwen3_moe_get_layer_map
+from .qwen3_5.pipeline_qwen3_5 import Qwen3_5ForCausalLMPipe
+from .qwen3_5.parallel_qwen3_5 import Qwen3_5ForCausalLMPipe as Qwen3_5ForCausalLMParallel
 from .qwen3_vl.parallel_qwen3_vl import Qwen3VLForCausalLMParallel
 
 ModelPipe = {
@@ -25,6 +29,7 @@ ModelPipe = {
     'Qwen2VLForConditionalGeneration':Qwen2VLForCausalLMPipe,
     'Qwen2_5_VLForConditionalGeneration':Qwen2_5_VLForCausalLMPipe,
     'Qwen3ForCausalLM':Qwen3ForCausalLMPipe,
+    'Qwen3_5ForConditionalGeneration':Qwen3_5ForCausalLMPipe
 }
     
 ModelParallel = {
@@ -35,7 +40,8 @@ ModelParallel = {
     'DeepseekV3ForCausalLM':DeepseekV3ForCausalLM,
     'Qwen3ForCausalLM':Qwen3ForCausalLMParallel,
     'Qwen3MoeForCausalLM':Qwen3MoeForCausalLM,
-    'Qwen3VLForConditionalGeneration':Qwen3VLForCausalLMParallel
+    'Qwen3VLForConditionalGeneration':Qwen3VLForCausalLMParallel,
+    'Qwen3_5ForConditionalGeneration':Qwen3_5ForCausalLMParallel
 }
 
 get_virtual_num_hidden_layers ={

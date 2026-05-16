@@ -182,8 +182,8 @@ def rlhf(rows,tokenizer,MAX_SEQ_LENGTH,
 
 def finetune(rows,tokenizer,MAX_SEQ_LENGTH,
              ROLE = {},PREFIX = [],ADAPT = [],
-             qa_inputs_generator=None,padding=False,filter_null=False,**kwargs):
-
+             qa_inputs_generator=None,padding=False,filter_null=False,auto_no_thinking=False,**kwargs):
+    
     ids = []; divide = [0]; 
     role0,start = (rows[0],1) if 'system' in rows[0] or len(PREFIX)==0 else (PREFIX[0],0)
     k,v = next(iter(role0.items()))
@@ -197,6 +197,8 @@ def finetune(rows,tokenizer,MAX_SEQ_LENGTH,
         if k == "user":
             ids.extend(tokenizer.encode(v))
         else:
+            if auto_no_thinking and not v.startswith('<think>'):
+                v='<think>\n\n</think>\n\n'+v
             divide.append((len(ids)+tokenizer.no_thinking_len) if v.startswith('<think>\n\n</think>') else len(ids))
             ids.extend(tokenizer.encode(v))
             ids.append(tokenizer.im_end_id)
@@ -340,6 +342,7 @@ def tokenize(file,tokenizer,MAX_SEQ_LENGTH,
              ROLE = {},PREFIX = [],ADAPT = [],
              padding=False,filter_null=False,
              image_path=None,output_dir=None,
+             auto_no_thinking=False,
              **kwargs):
     iteritems = finetune_generator(file)
     if not hasattr(tokenizer,'get_image_tokens'):
@@ -353,7 +356,7 @@ def tokenize(file,tokenizer,MAX_SEQ_LENGTH,
                            MAX_SEQ_LENGTH=MAX_SEQ_LENGTH,
                            ROLE=ROLE, PREFIX=PREFIX, ADAPT=ADAPT,
                            qa_inputs_generator=qa_inputs_generator,
-                           padding=padding,filter_null=filter_null)
+                           padding=padding,filter_null=filter_null,auto_no_thinking=auto_no_thinking)
             
         for item in func(row0):
             yield item
@@ -382,12 +385,14 @@ def write_parquet(filename,
                   max_pixels = 1024**2,
                   padding=False,
                   filter_null=False,
-                  check=False):
+                  check=False,
+                  disable_vision=False,
+                  auto_no_thinking=False):
     
     tokenizer = AutoTokenizer.from_pretrained(tokenizer,use_fast=True,trust_remote_code=True,add_bos_token = False)
     tokenizer.encode = partial(tokenizer.encode,add_special_tokens=False)
     tokenizer_class = tokenizer.__class__.__name__ 
-    tokenizer,ROLE,PREFIX,ADAPT = TOKENIZER[tokenizer_class](tokenizer,max_pixels=max_pixels)
+    tokenizer,ROLE,PREFIX,ADAPT = TOKENIZER[tokenizer_class](tokenizer,max_pixels=max_pixels,disable_vision=disable_vision)
     auto_batch_size = False
     if isinstance(filename,tuple):
         filename,chunk_id,contents = filename
@@ -416,6 +421,7 @@ def write_parquet(filename,
                             filter_null=filter_null,
                             image_path=image_path,
                             output_dir = os.path.join(output_dir , file),
+                            auto_no_thinking=auto_no_thinking,
                             )
     else:
         generator = pretrain_generator(contents)
@@ -563,7 +569,9 @@ def main(args):
                        max_pixels=args.max_pixels,
                        padding=args.pad,
                        filter_null=args.filter,
-                       check = args.type != 'ft')
+                       check = args.type != 'ft',
+                       disable_vision = args.disable_vision,
+                       auto_no_thinking= args.auto_no_thinking)
         files.sort()
         np.random.shuffle(files)
         data_infos = list(exe.map(func,files))
@@ -621,13 +629,39 @@ def main(args):
 def llama_template(tokenizer,**kwargs):
     
     PREFIX,ADAPT=[],[]
-    if len(tokenizer.encode('<think>'))==1:
+    if tokenizer.encode('<think>')[0]==151648:
         tokenizer.im_end_id = tokenizer.eos_token_id
         ROLE = {
             'user': tokenizer.encode('<｜User｜>'),
             'assistant': tokenizer.encode('<｜Assistant｜>')
         }
         ADAPT = [tokenizer.bos_token_id]
+    elif tokenizer.chat_template is not None and '你是南北阁' in tokenizer.chat_template:
+        tokenizer.im_start_id = tokenizer.bos_token_id
+        tokenizer.im_end_id = tokenizer.eos_token_id
+        nl_token_id = [13]
+        system_id = [8481]
+        user_id = [2714]
+        assistant_id = [66354]
+        
+        ROLE = {
+            'user': nl_token_id + [tokenizer.im_start_id]+ user_id + nl_token_id,
+            'assistant': [tokenizer.im_end_id] + nl_token_id + [tokenizer.im_start_id] + assistant_id + nl_token_id
+        }
+        tokenizer.no_thinking_len = len(tokenizer.encode('<think>\n\n</think>\n\n'))
+        PREFIX = []
+        ADAPT = [166100, 8481, 13, 18215, 19433, 154675, 152372, 21863, 152672, 57437, 162001, 46372, 152590, 5004, 15825, 152435, 3237, 3942, 152389, 166101, 13]
+        
+        _original_encode = tokenizer.encode
+
+        def encode(v):
+            ids = _original_encode(v)
+            if ids and ids[0] == 152343:
+                ids = ids[1:]
+            return ids
+
+        tokenizer.encode = encode
+        
     else:
         tokenizer.pad_token_id = 0
         tokenizer.im_start_id = tokenizer.encode('<|im_start|>')[0]
@@ -642,7 +676,6 @@ def llama_template(tokenizer,**kwargs):
             'user': nl_token_id + [tokenizer.im_start_id]+ user_id + nl_token_id,
             'assistant': [tokenizer.im_end_id] + nl_token_id + [tokenizer.im_start_id] + assistant_id + nl_token_id
         }
-
     return tokenizer,ROLE,PREFIX,ADAPT
     
 def llama3_template(tokenizer,**kwargs):
@@ -718,7 +751,7 @@ def qwen2_template(tokenizer,**kwargs):
         PREFIX = [{'system':'You are a helpful assistant.'}]
     
     config = AutoConfig.from_pretrained(tokenizer.name_or_path)
-    if hasattr(config,'vision_config'):
+    if hasattr(config,'vision_config') and not kwargs['disable_vision']:
         from transformers import AutoProcessor
         from transformers.models.qwen2_vl.image_processing_qwen2_vl import smart_resize
         
@@ -957,7 +990,8 @@ TOKENIZER = {
     'Qwen2Tokenizer':qwen2_template,
     'BaichuanTokenizer':baichcuan_template,
     'InternLM2Tokenizer':internvl_template,
-    'InternLM2TokenizerFast':internvl_template
+    'InternLM2TokenizerFast':internvl_template,
+    'TokenizersBackend': qwen2_template
 }
 
 if __name__=='__main__':
@@ -979,7 +1013,9 @@ if __name__=='__main__':
     parser.add_argument('--stack', action='store_true', help="stack tokens")
     parser.add_argument('-T','--thread', action='store_true', help="thread")
     parser.add_argument('-C','--clean', action='store_true', help="clean")
+    parser.add_argument('--disable_vision', action='store_true', help="disable vision")
     parser.add_argument('--pad', action='store_true', help="pad the token.")
     parser.add_argument('--filter', action='store_true', help="filter the samples of all null tokens.")
+    parser.add_argument('--auto_no_thinking', action='store_true', help="auto add no thinking at begin.")
     args = parser.parse_args()
     main(args)
