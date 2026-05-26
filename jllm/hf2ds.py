@@ -49,6 +49,13 @@ if __name__=='__main__':
             def __getitem__(self, key):
                 return 'model.safetensors'
         weight_map = UniversalContainer()
+        
+    text_config = getattr(config, 'text_config', config)
+    if text_config is not config:
+        for attr in set(vars(text_config)):
+            if not hasattr(config, attr):
+                setattr(config, attr, getattr(text_config, attr))
+
     if moe:
         layer_map = get_layer_map[config.architectures[0]](config)
         num_expert_per_group = (config.num_experts if hasattr(config,'num_experts') else config.n_routed_experts)//(config.moe_layer_pipe_size-1)
@@ -73,16 +80,26 @@ if __name__=='__main__':
                                           num_expert_per_group,
                                           getattr(config,'num_nextn_predict_layers',0))
             else:
-                pipe2hf=model.get_pipe2hf(p,
-                                          te,
-                                          config.num_hidden_layers,
-                                          config.attention_bias,
-                                          partitions)
+                if hasattr(text_config, 'layer_types'):
+                    full_attn_layers = set([i for i, j in enumerate(text_config.layer_types) if j == 'full_attention'])
+                    pipe2hf = model.get_pipe2hf(p, te, text_config.num_hidden_layers,
+                                                text_config.attention_bias, partitions,
+                                                full_attn_layers=full_attn_layers)
+                    if hasattr(text_config, 'linear_key_head_dim'):
+                        pipe2hf['__extra_params__'] = text_config.linear_key_head_dim * text_config.linear_num_key_heads
+                else:
+                    pipe2hf=model.get_pipe2hf(p,
+                                              te,
+                                              config.num_hidden_layers,
+                                              config.attention_bias,
+                                              partitions)
             e=te//tensor_size
             state_dict={}
             source_dict={}
             local_hks = set()
             for hf_k in pipe2hf.values():
+                if isinstance(hf_k, int):
+                    continue
                 if e==0:
                     if isinstance(hf_k,tuple):
                         local_hks.update(hf_k)
@@ -109,7 +126,7 @@ if __name__=='__main__':
                 model_file="model.safetensors"
             if state_dict:save_file(state_dict,os.path.join(args.output,model_file))
             print(f'saved {model_file}')
-        
+            
     with ProcessPoolExecutor(max_workers=args.pipe_parallel_size) as exe:
         list(exe.map(hf2ds,range(args.pipe_parallel_size)))
     config.partition_method = partitions
