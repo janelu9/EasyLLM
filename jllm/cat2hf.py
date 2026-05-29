@@ -53,33 +53,40 @@ if __name__=='__main__':
     num_stages = int(files[0][:-12].rsplit('-',1)[1])
     
     def func(pipe_rank):
-        
-        pts = [load_file(os.path.join(ckpt_path,f)) for f in files if int(f.rsplit('-',3)[1])==pipe_rank]
-        moe = {k:p.pop(k) for p in pts for k in set(p.keys()) if '.experts.' in k}
+        pts = [load_file(os.path.join(ckpt_path, f)) for f in files if int(f.rsplit('-', 3)[1]) == pipe_rank]
+        moe = {k: p.pop(k) for p in pts for k in set(p.keys()) if '.experts.' in k}
         pts = [p for p in pts if p]
-        
+
         keys = set(pts[0].keys())
-        state_dict ={}
-        
-        index = {"metadata":{"total_size":0},"weight_map":{}}
-        model_file =f"model-{pipe_rank:05d}-of-"+f"{num_stages:05d}.safetensors"
-        
+        state_dict = {}
+
+        model_file = f"model-{pipe_rank:05d}-of-" + f"{num_stages:05d}.safetensors"
+
         for k in tqdm.tqdm(keys):
             dim = parallel_type(k)
-            if dim >=0:
-                state_dict[k] = torch.cat([p.pop(k) for p in pts],dim)
+            if dim >= 0:
+                state_dict[k] = torch.cat([p.pop(k) for p in pts], dim)
             else:
                 state_dict[k] = pts[0].pop(k)
-            index["metadata"]["total_size"] +=state_dict[k].nbytes
-            index["weight_map"].update({k:model_file})
+
+        for base_k in {k[:-6] for k in state_dict if k.endswith('.__q__')}:
+            q   = state_dict.pop(base_k + '.__q__')
+            k_t = state_dict.pop(base_k + '.__k__')
+            v_t = state_dict.pop(base_k + '.__v__')
+            state_dict[base_k] = torch.cat([q, k_t, v_t], dim=0).contiguous()
+
         for k in set(moe.keys()):
             state_dict[k] = moe.pop(k)
-            index["metadata"]["total_size"] +=state_dict[k].nbytes
-            index["weight_map"].update({k:model_file})
+
+        index = {
+            "metadata": {"total_size": sum(v.nbytes for v in state_dict.values())},
+            "weight_map": {k: model_file for k in state_dict}
+        }
+
         del pts
         gc.collect()
-        save_file(state_dict,os.path.join(args.hf,model_file if num_stages>1 else "model.safetensors"))
-        print(f'{model_file} saved.') if num_stages>1 else print(f'model.safetensors saved.')
+        save_file(state_dict, os.path.join(args.hf, model_file if num_stages > 1 else "model.safetensors"))
+        print(f'{model_file} saved.') if num_stages > 1 else print(f'model.safetensors saved.')
         return index
 
     with ProcessPoolExecutor(max_workers=min(num_stages,32)) as exe:
