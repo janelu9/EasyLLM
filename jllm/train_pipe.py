@@ -610,7 +610,7 @@ def main(args):
             config.partition_method = config.partition_method.split(',')
         if args.pipe_parallel_size == 1:
             partition_method = 'uniform'
-        elif hasattr(config,'vision_config') and args.encoder_pipe_parallel_size == 0 and config.text_config.model_type == 'qwen3_5_text':
+        elif hasattr(config,'vision_config') and args.encoder_pipe_parallel_size == 0 and config.text_config.model_type != 'qwen3_5_text':
             partition_method = str([0]+list(range(2,2+len(config.partition_method))))[1:-1]
         else:
             partition_method = str(list(range(args.encoder_pipe_parallel_size+len(config.partition_method))))[1:-1]
@@ -654,7 +654,7 @@ def main(args):
         'train_batch_size'] = args.global_batch_size//args.sequence_parallel_size
     ds_config['steps_per_print'] = args.steps_per_print
 
-    if args.tensor_parallel_size>1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2 \
+    if args.tensor_parallel_size>=1 or args.expert_parallel_size>1 or args.moe_layer_pipe_size>2 \
         or config.model_type == 'qwen3_vl' :
         if args.device == 'npu':
             import jllm.ascend
@@ -671,8 +671,8 @@ def main(args):
         from jllm.core.model_parallel_config import ModelParallelConfig
         parallel_config = ModelParallelConfig(tensor_model_parallel_size=args.tensor_parallel_size,
                                               pipeline_model_parallel_size=args.pipe_parallel_size,
-                                              params_dtype=config.torch_dtype or config.dtype,
-                                              pipeline_dtype=config.torch_dtype or config.dtype,
+                                              params_dtype=config.torch_dtype or config.dtype or config.text_config.dtype,
+                                              pipeline_dtype=config.torch_dtype or config.dtype or config.text_config.dtype,
                                               async_tensor_model_parallel_allreduce=args.async_tensor_model_parallel_allreduce
                                              )
         parallel_state.set_aux_loss_alpha(args.aux_loss_alpha)

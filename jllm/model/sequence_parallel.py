@@ -70,3 +70,17 @@ def get_sequence_parallel_global_ranks():
     # rank_in_sequence = get_sequence_parallel_rank()
     # world_size = get_sequence_parallel_world_size()
     # return _SEQUENCE_PARALLEL_GLOBAL_RANKS[(rank_in_sequence - 1) % world_size]
+    
+_TIED_EMBED_GROUP = None
+_TIED_EMBED_RANKS = None
+
+def get_tied_embed_group():
+    return _TIED_EMBED_GROUP
+
+def get_tied_embed_ranks():
+    return _TIED_EMBED_RANKS
+
+def set_tied_embed_group(group, ranks):
+    global _TIED_EMBED_GROUP, _TIED_EMBED_RANKS
+    _TIED_EMBED_GROUP = group
+    _TIED_EMBED_RANKS = ranks
